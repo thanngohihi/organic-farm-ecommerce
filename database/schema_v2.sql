@@ -1,9 +1,5 @@
-CREATE DATABASE IF NOT EXISTS organic_farm_ecommerce CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE organic_farm_ecommerce;
-
--- =====================================================================
--- 1. TẠO CÁC BẢNG (KHÔNG CHỨA KHÓA NGOẠI)
--- =====================================================================
+--CREATE DATABASE IF NOT EXISTS organic_farm_ecommerce CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--USE organic_farm_ecommerce;
 
 -- 1. Bảng Roles: Phân tách rõ 5 vai trò để phù hợp với quy trình vận hành thực tế của nông trại
 CREATE TABLE roles (
@@ -175,9 +171,7 @@ CREATE TABLE complaints (
     updated_at TIMESTAMP NULL
 );
 
--- =====================================================================
--- 2. THÊM KHÓA NGOẠI (ALTER TABLE) ĐỂ ĐẢM BẢO TOÀN VẸN DỮ LIỆU
--- =====================================================================
+
 
 -- Khóa ngoại bảng Users
 ALTER TABLE users ADD CONSTRAINT fk_users_roles FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT;
