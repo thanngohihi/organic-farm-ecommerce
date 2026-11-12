@@ -1,184 +1,235 @@
-### 📄 Toàn bộ nội dung file `README.md` (Bấm Copy ô dưới đây):
+# 🌱 Organic Farm E-Commerce - Website Thương Mại Điện Tử Nông Sản Sạch
 
-```
-# 🌾 Website Thương Mại Điện Tử Nông Sản Sạch (Organic Farm Ecommerce)
+## 📖 1. Giới Thiệu Dự Án
 
-&gt; **Mô hình:** Nền tảng Thương mại điện tử chuyên biệt dành riêng cho 1 Nông trại (Single Farm Model) kết nối trực tiếp Nông trại đến bàn ăn.  
-&gt; **Trọng tâm đề tài:** Quản lý tồn kho theo Lô (Batch), tự động xuất kho theo nguyên tắc **FEFO**, truy xuất nguồn gốc bằng **Mã QR &amp; Nhật ký canh tác**, đặt hàng định kỳ (**Subscription**) và tính phí vận chuyển động theo kilomet.
+**Organic Farm E-Commerce** là nền tảng thương mại điện tử khép kín (Single-Farm) kết nối trực tiếp từ nông trại đến bàn ăn. Dự án được thiết kế để giải quyết các bài toán đặc thù trong chuỗi cung ứng nông sản tươi sống:
 
----
+* **Minh bạch nguồn gốc:** Khách hàng dễ dàng kiểm chứng quy trình trồng trọt, giấy kiểm định chất lượng và nhật ký chăm sóc thông qua mã QR trên từng lô hàng.
 
-## 📌 1. Giới Thiệu Dự Án &amp; Bài Toán Cốt Lõi
+* **Tối ưu vòng đời sản phẩm:** Quản lý kho nghiêm ngặt theo từng Lô thu hoạch (Batch) và tự động xuất kho theo nguyên tắc **FEFO** (*First Expired, First Out* - Hết hạn trước, xuất trước) nhằm giảm thiểu tỷ lệ hư hỏng, dập nát.
 
-Dự án giải quyết bài toán vận hành thực tế của nông sản tươi sống từ gieo trồng đến tận tay người tiêu dùng:
-* **Tầng vĩ mô (Thị trường):** Đáp ứng nhu cầu thực phẩm sạch ngày càng tăng, giải quyết tình trạng mập mờ nguồn gốc và hàng kém chất lượng.
-* **Tầng trung gian (Chuỗi cung ứng):** Cắt giảm các khâu trung gian giúp tối ưu chi phí và rút ngắn thời gian lưu kho.
-* **Tầng vi mô (Nông trại):** Giúp nông trại minh bạch quy trình trồng trọt; tự động hóa cảnh báo hạn sử dụng và xuất kho FEFO nhằm giảm thiểu tối đa tỷ lệ hàng hỏng/dập nát và hao hụt nội bộ.
-* **Giải pháp:** Nền tảng TMĐT khép kín tích hợp **Nhật ký canh tác**, **Quản lý kho theo Lô (Batch)**, xuất kho **FEFO**, **QR Code truy xuất nguồn gốc**, **Gói nông sản định kỳ (Subscription)** và **Cảnh báo Flash Sale xả hàng sắp hết hạn**.
+* **Tiện lợi & Giao nhận hỏa tốc:** Hỗ trợ mua lẻ hoặc đăng ký gói rau củ định kỳ (Subscription) tự động lên đơn, kết hợp tính phí vận chuyển động theo khoảng cách thực tế.
 
----
+## 🛠 2. Công Nghệ Sử Dụng (Tech Stack)
 
-## 🛠️ 2. Công Nghệ Sử Dụng (Tech Stack)
+| Phân hệ | Công nghệ / Thư viện | Mục đích sử dụng | 
+| ----- | ----- | ----- | 
+| **Backend** | **Laravel (PHP)**, Laravel Sanctum, Spatie Permission | Xây dựng RESTful API, xác thực Token, phân quyền 5 roles, xử lý Cron-job (FEFO, Flash Sale, Subscription). | 
+| **Frontend** | **React.js (Vite)**, Tailwind CSS, Shadcn UI / Flowbite, Lucide Icons | Giao diện tối giản chuẩn **Mobile-first** cho khách hàng và Dashboard quản trị nội bộ. | 
+| **Database** | **MySQL** | Lưu trữ dữ liệu quan hệ (Sản phẩm, Lô hàng, Nhật ký, Đơn hàng, Khiếu nại...). | 
+| **Media Storage** | **Cloudinary API** | Lưu trữ hình ảnh, video độ phân giải cao cho nhật ký canh tác, chứng nhận và bằng chứng khiếu nại. | 
+| **Third-Party APIs** | **MoMo Payment Sandbox**, **Google Distance Matrix API** | Cổng thanh toán trực tuyến (Webhook IPN) và tính phí vận chuyển động theo số km thực tế. | 
+| **QR & Charts** | `simple-qrcode`, `html5-qrcode`, `Recharts` / `Chart.js` | Tạo mã QR tự động từ Backend, quét mã bằng camera trên Web và vẽ biểu đồ thống kê doanh thu/hao hụt. | 
 
-* **Backend Framework:** Laravel (PHP)
-* **Frontend Framework:** React.js + Tailwind CSS (Vite, Shadcn UI / Flowbite React, Lucide-react)
-* **Database &amp; Storage:** MySQL (DBeaver / MySQL Workbench), Cloudinary API (Lưu trữ ảnh/video chất lượng cao)
-* **Thư viện chuyên dụng:**
-  * **Backend:** Laravel Sanctum (Token Auth), Spatie Laravel-Permission (Phân quyền 5 roles), simplesoftwareio/simple-qrcode (Sinh mã QR), L5-Swagger / Postman.
-  * **Frontend:** html5-qrcode / react-qr-reader (Quét QR trực tiếp), Chart.js (react-chartjs-2) / Recharts (Biểu đồ Thống kê).
-* **Tích hợp bên thứ ba (Third-party Integrations):**
-  * Cổng thanh toán trực tuyến MoMo API (Sandbox + Webhook IPN).
-  * Google Distance Matrix API (Tính khoảng cách km &amp; phí ship động).
-* **Triển khai (Deployment):**
-  * Backend &amp; Database: [suspicious link removed] / Railway.app
-  * Frontend React: Vercel / Netlify
+## 👥 3. Phân Quyền Hệ Thống (5 User Roles)
 
----
+Hệ thống phân tách chặt chẽ quyền truy cập và luồng nghiệp vụ cho 5 nhóm đối tượng:
 
-## 👥 3. Phân Công Khối Lượng Công Việc Cho 5 Thành Viên
+1. **Khách vãng lai (Guest):** Xem danh mục sản phẩm, câu chuyện thương hiệu, quét mã QR xem thông tin minh bạch kiểm định.
 
-Khối lượng công việc được chia đều gồm **3 người làm Backend** và **2 người làm Frontend** nhằm tránh chồng chéo:
+2. **Khách hàng (Customer):** Mua hàng lẻ, đăng ký gói rau củ định kỳ, thanh toán trực tuyến, tích điểm thân thiết (Loyalty) và gửi yêu cầu khiếu nại/đổi trả kèm hình ảnh/video.
 
-| STT | Thành Viên | Vai Trò Chính | Nhiệm Vụ &amp; Module Chức Năng Cụ Thể |
-| :---: | :--- | :--- | :--- |
-| **1** | **[Thành viên 1]** | **Backend Lead**<br />*(Core System, Auth &amp; Payment)* | - Thiết kế Schema CSDL (`schema_v1.sql`), Migration &amp; kết nối Cloudinary API.<br />- Viết API Đăng ký, Đăng nhập, phân quyền 5 Roles (`Sanctum` + `Spatie Permission`).<br />- Viết API Specification (`swagger.json` / Postman Collection) cho Frontend làm Mock Data.<br />- Tích hợp Service Thanh toán MoMo API (Tạo link thanh toán, xử lý Webhook IPN). |
-| **2** | **[Thành viên 2]** | **Backend Dev 1**<br />*(Nguồn gốc, FEFO &amp; Thống kê)* | - Viết API Nhật ký canh tác (Farming Logs) &amp; Minh bạch giấy tờ kiểm định.<br />- Viết API sinh và quét Mã QR truy xuất nguồn gốc (`simple-qrcode`).<br />- Lập trình thuật toán Quản lý kho theo Lô (Batch) &amp; xuất kho tự động **FEFO** (`ngay_het_han` gần nhất).<br />- Viết API ghi nhận Xuất hủy/Hao hụt nội bộ.<br />- Cấu hình Cron-job tự động phát cảnh báo Flash Sale cho lô cận hạn (dưới 3 ngày) và API Admin Dashboard Thống kê. |
-| **3** | **[Thành viên 3]** | **Backend Dev 2**<br />*(Đơn hàng, Subscription &amp; Maps API)* | - Viết API Giỏ hàng, Đặt hàng lẻ và Tích điểm thành viên (Loyalty).<br />- Lập trình logic Gói nông sản định kỳ (**Subscription**) + Cron-job tự động sinh đơn hàng theo lịch (01:00 Thứ 3 &amp; Thứ 6).<br />- Tích hợp Google Distance Matrix API tính khoảng cách km và phí ship động thực tế.<br />- Viết API tiếp nhận và xử lý Khiếu nại / Hoàn tiền. |
-| **4** | **[Thành viên 4]** | **Frontend Dev 1**<br />*(Customer App)* | - Xây dựng giao diện Responsive chuẩn Mobile-first cho Khách hàng (`React.js` + `Tailwind CSS`).<br />- Trang chủ, Trang Câu chuyện thương hiệu, Form Đăng ký/Đăng nhập.<br />- Giao diện Danh mục &amp; Lọc sản phẩm theo chứng nhận (VietGAP/USDA).<br />- Giao diện Chi tiết sản phẩm &amp; Quét mã QR xem Nhật ký canh tác.<br />- Giỏ hàng, Đặt hàng lẻ (tính ship động), Đăng ký Gói rau củ định kỳ, Thanh toán MoMo &amp; Form gửi Khiếu nại đính kèm ảnh/video. |
-| **5** | **[Thành viên 5]** | **Frontend Dev 2**<br />*(Admin &amp; Operations UI)* | - Xây dựng giao diện Dashboard nội bộ phân cấp 3 quyền (Sidebar Menu).<br />- **Dashboard Farm Staff:** Form đăng nhật ký canh tác (ảnh/video), Form khởi tạo Lô FEFO, In mã QR trực tiếp, Form ghi nhận hao hụt.<br />- **Dashboard Sales:** Quản lý/xác nhận đơn hỏa tốc, Duyệt khiếu nại (hoàn tiền / giao bù 0đ).<br />- **Dashboard Admin:** Biểu đồ thống kê doanh thu, tỷ lệ hao hụt, tỷ lệ khách mua lại (`Chart.js`). |
+3. **Nhân viên Nông trại (Farm Staff):** Quản lý mùa vụ, cập nhật nhật ký canh tác (Timeline), khởi tạo lô thu hoạch (Batch) và in mã QR truy xuất nguồn gốc. *(Không có quyền xem dữ liệu doanh thu/khách hàng)*.
 
----
+4. **Nhân viên Bán hàng / CSKH (Sales):** Duyệt và điều phối đơn giao hỏa tốc, xử lý khiếu nại (duyệt hoàn tiền hoặc tạo đơn giao bù $0\text{đ}$).
 
-## 🔑 4. Phân Quyền 5 Vai Trò Người Dùng (User Roles)
+5. **Quản trị viên (Admin):** Toàn quyền quản trị hệ thống, cấu hình phân quyền, theo dõi báo cáo thống kê (doanh thu, tỷ lệ hao hụt xuất hủy, tỷ lệ khách quay lại).
 
-1. **Khách vãng lai (Guest):** Xem sản phẩm, lọc theo chứng nhận (VietGAP, USDA...), xem câu chuyện thương hiệu nông trại.
-2. **Khách hàng (Customer):** Mua lẻ / Đăng ký Gói định kỳ (Subscription), tích điểm thành viên, quét QR truy xuất, thanh toán MoMo và gửi khiếu nại đính kèm bằng chứng.
-3. **Nhân viên Nông trại (Farm Staff):** Cập nhật nhật ký canh tác (ảnh/video), nhập thông tin lô hàng FEFO, in mã QR và ghi nhận xuất hủy hao hụt.
-4. **Nhân viên Bán hàng (Sales):** Xác nhận &amp; điều phối đơn hỏa tốc, xử lý khiếu nại (hoàn tiền / đổi trả), cấu hình Flash Sale cho lô cận hạn.
-5. **Quản trị viên (Admin):** Toàn quyền hệ thống, quản lý tài khoản 5 roles, xem báo cáo thống kê doanh thu và tỷ lệ hao hụt.
+## ✨ 4. Các Tính Năng Nổi Bật (Phạm Vi MoSCoW)
 
----
+### 🔴 Must-Have (Chức năng cốt lõi)
 
-## 📅 5. Tiến Độ Triển Khai Chi Tiết Theo 4 Tuần
+* **Quản lý kho theo Lô (Batch) & Nguyên tắc FEFO:** Mỗi sản phẩm được quản lý theo từng lô có `ngày_thu_hoạch` và `ngày_hết_hạn`. Khi phát sinh đơn hàng, hệ thống tự động trừ tồn kho ở lô có hạn sử dụng gần nhất.
 
-* **TUẦN 1: CHUẨN HÓA SCHEMA CSDL VÀ BASE FRONTEND**
-  * Backend: Thiết kế CSDL (`schema_v1.sql`), Migration, Auth 5 roles, xuất API Spec (`swagger.json`/Postman), kết nối Cloudinary.
-  * Frontend: Dựng khung project React.js + Tailwind CSS, kết nối Auth UI, dựng Mock Data.
-* **TUẦN 2: GHÉP NỐI MODULE KHO, NGUỒN GỐC VÀ ĐƠN HÀNG LẺ**
-  * Backend: API Nhật ký canh tác, sinh mã QR, xuất kho FEFO, báo xuất hủy; API Đơn hàng lẻ &amp; Google Maps API tính ship.
-  * Frontend: UI Lọc sản phẩm VietGAP/USDA, Chi tiết &amp; Quét QR nguồn gốc, Giỏ hàng &amp; Ship động; Dashboard Farm Staff (nhập lô FEFO, in QR, xuất hủy).
-* **TUẦN 3: SUBSCRIPTION, CSKH, THANH TOÁN VÀ THỐNG KÊ**
-  * Backend: Tích hợp MoMo Payment (IPN); Cron-job Flash Sale &amp; Subscription (Thứ 3 &amp; Thứ 6); API khiếu nại &amp; Admin Stats.
-  * Frontend: UI Đăng ký Gói định kỳ theo tháng, Thanh toán MoMo, Form khiếu nại đính kèm ảnh/video; Dashboard Sales (duyệt khiếu nại) &amp; Dashboard Admin (Chart.js).
-* **TUẦN 4: KIỂM THỬ LIÊN THÔNG END-TO-END VÀ TỐI ƯU NGHIỆM THU**
-  * Cả nhóm: Kiểm thử luồng liên thông thực tế (Farm Staff nhập lô -&gt; Khách quét QR -&gt; Đặt Subscription -&gt; Thanh toán MoMo -&gt; Sales duyệt -&gt; Khách khiếu nại -&gt; Admin xem thống kê).
-  * Deploy: Backend/MySQL lên Render/Railway, Frontend lên Vercel/Netlify. Hoàn thiện Báo cáo Word và Slide.
+* **Truy xuất nguồn gốc qua QR Code:** Tự động sinh mã QR cho từng lô hàng. Khi quét mã, hệ thống hiển thị chi tiết người phụ trách, ngày thu hoạch, hạn sử dụng và các chứng nhận (VietGAP, USDA).
 
----
+* **Ghi nhận Xuất hủy / Hao hụt:** Cho phép ghi nhận số lượng nông sản hư hỏng trong quá trình bảo quản để trừ kho chính xác và phục vụ thống kê.
 
-## 🚀 6. Hướng Dẫn Khởi Chạy Dự Án (Local Setup)
+* **Luồng mua sắm cơ bản:** Tìm kiếm, lọc theo chứng nhận, giỏ hàng, đặt hàng và thanh toán.
+
+### 🟡 Should-Have (Chức năng nâng cao)
+
+* **Gói Nông sản Định kỳ (Subscription Box):** Khách hàng đăng ký gói rau củ theo tháng (VD: giao vào Thứ 3 & Thứ 6 hàng tuần). Hệ thống chạy **Cron-Job** tự động khởi tạo đơn hàng theo lịch hẹn.
+
+* **Nhật ký canh tác (Farming Log):** Dòng thời gian trực quan (gieo hạt, bón phân, tưới tiêu, thu hoạch) đính kèm ảnh/video thực tế từ nông trại.
+
+* **CSKH & Xử lý Khiếu nại:** Khách hàng gửi yêu cầu hoàn tiền/đổi trả bắt buộc kèm ảnh/video thực tế; Sales kiểm duyệt và xử lý trực tiếp trên Dashboard.
+
+* **Chương trình Khách hàng thân thiết (Loyalty):** Tự động tích lũy điểm thưởng sau mỗi đơn hàng hoàn tất.
+
+### 🟢 Could-Have (Tính năng mở rộng)
+
+* **Tự động cảnh báo Xả hàng (Flash Sale):** Job chạy ngầm lúc `00:00` mỗi ngày để quét các lô hàng còn dưới 3 ngày sử dụng, tự động gắn cờ giảm giá nhanh.
+
+* **Phí vận chuyển động (Dynamic Shipping):** Tích hợp Google Maps API tính khoảng cách thực tế ($\text{km}$) từ nông trại đến địa chỉ nhận hàng để tính phí giao hỏa tốc nội thành.
+
+* **Thanh toán trực tuyến MoMo:** Tích hợp cổng thanh toán MoMo và xử lý trạng thái đơn hàng tự động qua Webhook IPN.
+
+## 🚀 5. Hướng Dẫn Cài Đặt & Chạy Dự Án (Local Development)
 
 ### Yêu cầu môi trường
-* PHP (&gt;= 8.1) &amp; Composer (cho Laravel)
-* Node.js (&gt;= 18.x) &amp; npm (cho React.js)
-* MySQL Server (XAMPP / Laragon / Docker)
 
-### Các bước cài đặt
+* PHP $\ge 8.1$, Composer
 
-#### 1. Clone repository về máy cá nhân
-git clone https://github.com/thanngohihi/organic-farm-ecommerce
+* Node.js $\ge 18.x$, NPM / Yarn
 
+* MySQL $\ge 8.0$
+
+### Bước 1: Clone dự án
+
+```bash
+git clone https://github.com/your-username/organic-farm-ecommerce.git
 cd organic-farm-ecommerce
+```
 
-\#### 2\. Cấu hình Backend (Laravel)
+### Bước 2: Cài đặt Backend (Laravel)
 
+```bash
 cd backend
-
 composer install
-
 cp .env.example .env
-
 php artisan key:generate
+```
 
+*Cấu hình các biến môi trường trong file `.env`:*
+
+```env
+DB_DATABASE=organic_farm_db
+DB_USERNAME=root
+DB_PASSWORD=
+
+CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+GOOGLE_MAPS_API_KEY=your_google_maps_key
+MOMO_PARTNER_CODE=your_momo_partner_code
+MOMO_ACCESS_KEY=your_momo_access_key
+MOMO_SECRET_KEY=your_momo_secret_key
+```
+
+*Khởi tạo cơ sở dữ liệu và dữ liệu mẫu:*
+
+```bash
 php artisan migrate --seed
-
 php artisan serve
+```
 
-\#### 3\. Cấu hình Frontend (React.js)
+### Bước 3: Chạy Task Scheduler (Cron-job cho FEFO, Flash Sale & Subscription)
 
+Mở một terminal mới tại thư mục `backend` và chạy lệnh:
+
+```bash
+php artisan schedule:work
+```
+
+### Bước 4: Cài đặt Frontend (React + Vite)
+
+```bash
 cd ../frontend
-
 npm install
+cp .env.example .env
+```
 
+*Cấu hình URL API trong `.env`:*
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+*Khởi chạy ứng dụng:*
+
+```bash
 npm run dev
-
-#### **1\. Quy Trình Tạo Nhánh, Commit và Push Code Lên GitHub**
-
-Khi các thành viên làm việc, hãy làm theo đúng 5 câu lệnh Git sau:
-
-* **Bước 1: Cập nhật code mới nhất từ nhánh** **main** **về máy**
-
-```
-git checkout main
-git pull origin main
-
 ```
 
-* **Bước 2: Tạo nhánh riêng cho tính năng bạn làm**
+## 🔀 6. Quy Trình Làm Việc Với Git (Dành Cho Thành Viên Nhóm)
 
+Để tránh xung đột mã nguồn (Conflict) khi 5 thành viên cùng phát triển song song, nhóm áp dụng quy trình Git chuẩn sau đây:
+
+### 6.1. Quy tắc đặt tên nhánh (Branch Naming Convention)
+
+Tuyệt đối **không** code trực tiếp trên nhánh `main` hoặc `develop`. Mỗi tính năng/sửa lỗi phải tạo một nhánh riêng từ nhánh `develop` theo cú pháp:
+
+* **Tính năng mới:** `feature/<ten-thanh-vien>-<ten-tinh-nang>`
+  * *Ví dụ:* `feature/tv1-auth-momo`, `feature/tv2-fefo-qrcode`, `feature/tv4-customer-ui`
+* **Sửa lỗi (Bugfix):** `fix/<ten-thanh-vien>-<mo-ta-loi>`
+  * *Ví dụ:* `fix/tv3-shipping-fee-api`
+
+### 6.2. Các bước thực hiện hàng ngày
+
+#### Bước 1: Lấy dự án về máy (Chỉ làm 1 lần đầu tiên)
+
+```bash
+git clone https://github.com/your-username/organic-farm-ecommerce.git
+cd organic-farm-ecommerce
 ```
-git checkout -b feature/fefo-inventory
 
+#### Bước 2: Cập nhật code mới nhất từ nhánh chung (`develop`)
+
+Trước khi bắt đầu code một tính năng mới, luôn kéo code mới nhất từ nhánh `develop` về máy:
+
+```bash
+git checkout develop
+git pull origin develop
 ```
 
-*(Thay* *feature/fefo-inventory* *bằng tên tính năng của bạn, ví dụ:* *feature/customer-cart* *)*.
+#### Bước 3: Tạo nhánh mới và chuyển sang nhánh đó
 
-* **Bước 3: Lưu lại thay đổi sau khi viết code xong**
-
+```bash
+git checkout -b feature/ten-cua-ban-ten-tinh-nang
 ```
+*(Kiểm tra xem mình đã đứng đúng nhánh chưa bằng lệnh `git branch`)*
+
+#### Bước 4: Lưu thay đổi (Commit) và Đẩy code lên GitHub (Push)
+
+Sau khi hoàn thành công việc hoặc cuối ngày làm việc:
+
+```bash
+# 1. Kiểm tra các file đã thay đổi
+git status
+
+# 2. Thêm tất cả file thay đổi vào vùng chờ
 git add .
-git commit -m "Add: Thuat toan xuat kho FEFO"
 
+# 3. Lưu lại lịch sử thay đổi với thông điệp rõ ràng
+git commit -m "feat: hoàn thành API xuất kho FEFO"
+
+# 4. Đẩy nhánh của bạn lên GitHub
+git push -u origin feature/ten-cua-ban-ten-tinh-nang
 ```
 
-* **Bước 4: Đẩy nhánh của bạn lên GitHub**
+#### Bước 5: Tạo Pull Request (PR) để gộp code
 
-```
-git push origin feature/fefo-inventory
+1. Truy cập vào repository dự án trên **GitHub**.
+2. Chọn tab **Pull requests** $\rightarrow$ Bấm **New pull request**.
+3. Chọn nhánh đích (`base`) là **`develop`** và nhánh nguồn (`compare`) là **nhánh bạn vừa push**.
+4. Nhập tiêu đề, mô tả ngắn gọn các chức năng đã làm và bấm **Create pull request**.
+5. Thông báo cho nhóm trưởng (hoặc thành viên phụ trách review) kiểm tra và bấm **Merge pull request**.
 
-```
+> ⚠️ **Lưu ý quan trọng:** Nếu trong lúc làm việc có người khác vừa merge code mới vào `develop`, hãy chạy lệnh `git pull origin develop` ngay tại nhánh của bạn để đồng bộ và xử lý conflict (nếu có) trước khi tạo Pull Request.
 
-* **Bước 5: Gộp code vào nhánh** **main** **(Pull Request)**
-  1. Vào địa chỉ trang Web GitHub dự án.
-  2. Bấm nút màu vàng **Compare &amp; pull request** xuất hiện trên màn hình.
-  3. Nhấn **Create pull request** \-&gt; Trưởng nhóm duyệt và bấm **Merge pull request** để hoàn tất.
+## 📅 7. Lộ Trình Phát Triển & Phân Công Nhóm (5 Thành Viên)
 
----
+Dự án được triển khai trong **4 Tuần** với cơ cấu **3 Backend** và **2 Frontend**:
 
-#### **2\. Cách Chạy Thử Chương Trình Trên Máy Cá Nhân (Local)**
+* **Tuần 1 - Chuẩn hóa Schema CSDL & Base UI:** Thiết kế ERD, dựng khung Backend/Frontend, thống nhất tài liệu API Specification (Swagger/Postman) và hoàn thiện hệ thống Auth phân quyền 5 roles.
 
-Mở **2 cửa sổ Terminal** trong VS Code để chạy đồng thời cả Backend và Frontend:
+* **Tuần 2 - Core Features (Kho FEFO, QR Code & Đơn lẻ):** Hoàn thiện API & UI Nhật ký canh tác, tạo/quét mã QR, thuật toán xuất kho FEFO, ghi nhận hao hụt và tính phí ship động qua Google Maps.
 
-* **Terminal 1 (Backend - Laravel):**
+* **Tuần 3 - Nghiệp vụ Nâng cao & Thanh toán:** Tích hợp cổng thanh toán MoMo (IPN), Cron-job sinh đơn định kỳ (Subscription), cảnh báo Flash Sale, luồng khiếu nại CSKH và biểu đồ thống kê Admin.
 
-```
-cd backend
-composer install
-php artisan migrate --seed
-php artisan serve
+* **Tuần 4 - Kiểm thử End-to-End & Nghiệm thu:** Chạy kiểm thử liên thông toàn bộ quy trình từ Nông trại $\rightarrow$ Khách hàng $\rightarrow$ Sales $\rightarrow$ Admin, tối ưu tốc độ tải trang và triển khai (Deploy).
 
-```
+### Phân công chi tiết:
 
-👉 Server Backend sẽ chạy tại địa chỉ: `[suspicious link removed]`
+| Thành viên | Vai trò | Phạm vi phụ trách chính | 
+| ----- | ----- | ----- | 
+| **Thành viên 1** | Backend Lead | Thiết kế Schema CSDL, Auth & Phân quyền 5 roles, tích hợp Cloudinary & Cổng thanh toán MoMo. | 
+| **Thành viên 2** | Backend Dev 1 | API Nhật ký canh tác, sinh mã QR, thuật toán kho FEFO, cảnh báo Flash Sale & API Thống kê Admin. | 
+| **Thành viên 3** | Backend Dev 2 | API Giỏ hàng, Đơn lẻ, Gói định kỳ (Cron-job), Loyalty, Google Maps API & Xử lý khiếu nại. | 
+| **Thành viên 4** | Frontend Dev 1 | Giao diện Mobile-first cho Khách hàng (Trang chủ, Quét QR, Giỏ hàng, Thanh toán, Khiếu nại). | 
+| **Thành viên 5** | Frontend Dev 2 | Hệ thống Dashboard nội bộ cho Farm Staff (Nhập lô/In QR), Sales (Duyệt đơn/Khiếu nại) & Admin (Báo cáo). | 
 
-* **Terminal 2 (Frontend - React.js):**
+## 📄 8. Tài Liệu Tham Khảo & Kiểm Thử API
 
-```
-cd frontend
-npm install
-npm run dev
+* Tài liệu đặc tả API (Postman Collection / Swagger JSON): `/docs/api-specification.json`
 
-```
-
-👉 Web Frontend sẽ chạy tại địa chỉ: `http://localhost:5173` (Giữ Ctrl và click vào link để mở trang web trên trình duyệt).
-
+* Sơ đồ thiết kế Cơ sở dữ liệu (ERD & SQL Dump): `/docs/database_schema.sql`
