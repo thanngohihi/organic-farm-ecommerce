@@ -1,14 +1,14 @@
 {
   "info": {
-    "_postman_id": "organic-farm-auth-5-roles-v1",
-    "name": "Organic Farm Ecommerce - Tuần 1: Auth 5 Roles & Cloudinary API",
-    "description": "Tài liệu API Specification Tuần 1 của Người 1. Chuẩn hóa cấu trúc dữ liệu Request/Response cho 5 vai trò: Guest, Customer, Farm Staff, Sales, Admin và Upload Media lên Cloudinary.",
+    "_postman_id": "organic-farm-ecommerce-master-api-v2",
+    "name": "Organic Farm E-Commerce - MASTER API SPECIFICATION (4 Tuần)",
+    "description": "Tài liệu API Specification & Mock Data tổng thể của Đồ án. Phục vụ Người 4 (Frontend Customer App) và Người 5 (Frontend Dashboard Quản trị) tự giả lập dữ liệu dựng UI song song ngay từ Tuần 1.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "base_url",
-      "value": "http://127.0.0.1:8000",
+      "value": "http://127.0.0.1:8000/api/v1",
       "type": "string"
     },
     {
@@ -19,253 +19,517 @@
   ],
   "item": [
     {
-      "name": "1. [Role 1 - Guest] Lấy cấu hình quyền hạn Khách vãng lai",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Accept", "value": "application/json" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/v1/auth/guest-session",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "auth", "guest-session"]
-        },
-        "description": "Dành cho Khách vãng lai (chưa đăng nhập). Chỉ có quyền xem sản phẩm, câu chuyện thương hiệu và quét mã QR truy xuất nguồn gốc."
-      },
-      "response": [
+      "name": "1. Module Auth 5 Roles & Cloudinary (Người 1)",
+      "item": [
         {
-          "name": "200 OK - Guest Role Info",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Phiên truy cập dành cho Khách vãng lai (Guest).\",\n  \"data\": {\n    \"role\": {\n      \"id\": 1,\n      \"name\": \"guest\",\n      \"display_name\": \"Khách vãng lai\"\n    },\n    \"permissions\": [\n      \"view_products\",\n      \"view_brand_story\",\n      \"scan_qr_traceability\",\n      \"view_farming_logs\"\n    ],\n    \"restricted_actions\": [\n      \"place_order\",\n      \"subscribe_package\",\n      \"loyalty_points\",\n      \"submit_complaint\"\n    ]\n  }\n}"
-        }
-      ]
-    },
-    {
-      "name": "2. [Role 2 - Customer] Đăng ký tài khoản Khách hàng",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Accept", "value": "application/json" },
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"full_name\": \"Nguyễn Minh Khách Hàng\",\n  \"email\": \"khachhang@gmail.com\",\n  \"phone\": \"0909123456\",\n  \"password\": \"Password@123\",\n  \"password_confirmation\": \"Password@123\",\n  \"address\": \"65 Huỳnh Thúc Kháng, Phường Bến Nghé, Quận 1, TP.HCM\",\n  \"latitude\": 10.77159500,\n  \"longitude\": 106.70175500\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/auth/register",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "auth", "register"]
-        },
-        "description": "Khách hàng đăng ký mới mặc định được gán role_id = 2 (customer) và loyalty_points = 0."
-      },
-      "response": [
-        {
-          "name": "201 Created - Đăng ký Customer thành công",
-          "status": "Created",
-          "code": 201,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng ký tài khoản khách hàng thành công.\",\n  \"data\": {\n    \"access_token\": \"1|sanctum_customer_token_8f9a2b3c4d\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/customer/home\",\n    \"user\": {\n      \"id\": 5,\n      \"role_id\": 2,\n      \"full_name\": \"Nguyễn Minh Khách Hàng\",\n      \"email\": \"khachhang@gmail.com\",\n      \"phone\": \"0909123456\",\n      \"address\": \"65 Huỳnh Thúc Kháng, Phường Bến Nghé, Quận 1, TP.HCM\",\n      \"latitude\": \"10.77159500\",\n      \"longitude\": \"106.70175500\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 2,\n        \"name\": \"customer\",\n        \"display_name\": \"Khách hàng\"\n      }\n    },\n    \"permissions\": [\n      \"view_products\",\n      \"scan_qr_traceability\",\n      \"place_single_order\",\n      \"register_subscription\",\n      \"use_loyalty_points\",\n      \"submit_complaint\"\n    ]\n  }\n}"
-        },
-        {
-          "name": "422 Unprocessable Entity - Lỗi trùng Email/SĐT",
-          "status": "Unprocessable Entity",
-          "code": 422,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Dữ liệu đầu vào không hợp lệ.\",\n  \"errors\": {\n    \"email\": [\"Email này đã được sử dụng.\"],\n    \"phone\": [\"Số điện thoại này đã được đăng ký.\"]\n  }\n}"
-        }
-      ]
-    },
-    {
-      "name": "3. [Auth Login] Đăng nhập chung & Phân luồng 4 Roles có tài khoản",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Accept", "value": "application/json" },
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"admin@organicfarm.vn\",\n  \"password\": \"Password@123\"\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/auth/login",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "auth", "login"]
-        },
-        "description": "API Đăng nhập trả về cấu trúc Role, danh sách Permissions và đường dẫn Redirect tương ứng cho từng Role (Customer, Farm Staff, Sales, Admin)."
-      },
-      "response": [
-        {
-          "name": "200 OK - [Role 2: Customer Login]",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"2|sanctum_customer_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/customer/home\",\n    \"user\": {\n      \"id\": 4,\n      \"role_id\": 2,\n      \"full_name\": \"Nguyễn Văn Khách Hàng\",\n      \"email\": \"customer@gmail.com\",\n      \"phone\": \"0901000004\",\n      \"address\": \"227 Nguyễn Văn Cừ, Quận 5, TP.HCM\",\n      \"latitude\": \"10.76262200\",\n      \"longitude\": \"106.68217200\",\n      \"loyalty_points\": 150,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 2,\n        \"name\": \"customer\",\n        \"display_name\": \"Khách hàng\"\n      }\n    },\n    \"permissions\": [\n      \"view_products\",\n      \"scan_qr_traceability\",\n      \"place_single_order\",\n      \"register_subscription\",\n      \"use_loyalty_points\",\n      \"submit_complaint\"\n    ]\n  }\n}"
-        },
-        {
-          "name": "200 OK - [Role 3: Farm Staff Login] (Không xem được Doanh thu/Khách hàng)",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"3|sanctum_farm_staff_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/farm-staff/batches\",\n    \"user\": {\n      \"id\": 2,\n      \"role_id\": 3,\n      \"full_name\": \"Kỹ Sư Canh Tác (Farm Staff)\",\n      \"email\": \"staff@organicfarm.vn\",\n      \"phone\": \"0901000002\",\n      \"address\": \"Khu nhà kính A1, Nông trại Củ Chi\",\n      \"latitude\": \"10.97460000\",\n      \"longitude\": \"106.49320000\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 3,\n        \"name\": \"farm_staff\",\n        \"display_name\": \"Nhân viên Nông trại (Kỹ sư canh tác)\"\n      }\n    },\n    \"permissions\": [\n      \"manage_batches\",\n      \"manage_farming_logs\",\n      \"generate_qr_code\",\n      \"record_waste\",\n      \"upload_certification_docs\"\n    ]\n  }\n}"
-        },
-        {
-          "name": "200 OK - [Role 4: Sales / CSKH Login]",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"4|sanctum_sales_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/sales/orders\",\n    \"user\": {\n      \"id\": 3,\n      \"role_id\": 4,\n      \"full_name\": \"Nhân Viên CSKH & Điều Phối (Sales)\",\n      \"email\": \"sales@organicfarm.vn\",\n      \"phone\": \"0901000003\",\n      \"address\": \"Trạm điều phối Quận 1, TP.HCM\",\n      \"latitude\": \"10.77690000\",\n      \"longitude\": \"106.70090000\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 4,\n        \"name\": \"sales\",\n        \"display_name\": \"Nhân viên Bán hàng / CSKH\"\n      }\n    },\n    \"permissions\": [\n      \"manage_orders\",\n      \"dispatch_express_delivery\",\n      \"configure_flash_sale\",\n      \"resolve_complaints\",\n      \"approve_refund_or_compensate\",\n      \"record_waste\"\n    ]\n  }\n}"
-        },
-        {
-          "name": "200 OK - [Role 5: Admin Login]",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"5|sanctum_admin_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/admin/analytics\",\n    \"user\": {\n      \"id\": 1,\n      \"role_id\": 5,\n      \"full_name\": \"Chủ Nông Trại Admin\",\n      \"email\": \"admin@organicfarm.vn\",\n      \"phone\": \"0901000001\",\n      \"address\": \"Nông trại Organic, Củ Chi, TP.HCM\",\n      \"latitude\": \"10.97460000\",\n      \"longitude\": \"106.49320000\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 5,\n        \"name\": \"admin\",\n        \"display_name\": \"Quản trị viên (Chủ nông trại)\"\n      }\n    },\n    \"permissions\": [\n      \"full_system_access\",\n      \"manage_staff_accounts\",\n      \"manage_categories_and_products\",\n      \"view_revenue_and_waste_analytics\",\n      \"manage_batches\",\n      \"manage_orders\",\n      \"resolve_complaints\"\n    ]\n  }\n}"
-        },
-        {
-          "name": "401 Unauthorized - Sai mật khẩu",
-          "status": "Unauthorized",
-          "code": 401,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Email hoặc mật khẩu không chính xác.\"\n}"
-        },
-        {
-          "name": "403 Forbidden - Tài khoản bị khóa (is_active = false)",
-          "status": "Forbidden",
-          "code": 403,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ Quản trị viên nông trại.\"\n}"
-        }
-      ]
-    },
-    {
-      "name": "4. [Auth Profile] Lấy thông tin User hiện tại & Kiểm tra Token",
-      "request": {
-        "method": "GET",
-        "header": [
-          { "key": "Accept", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{access_token}}" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/v1/auth/me",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "auth", "me"]
-        }
-      },
-      "response": [
-        {
-          "name": "200 OK - Thông tin tài khoản đang đăng nhập",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"user\": {\n      \"id\": 2,\n      \"role_id\": 3,\n      \"full_name\": \"Kỹ Sư Canh Tác (Farm Staff)\",\n      \"email\": \"staff@organicfarm.vn\",\n      \"phone\": \"0901000002\",\n      \"role\": {\n        \"id\": 3,\n        \"name\": \"farm_staff\",\n        \"display_name\": \"Nhân viên Nông trại (Kỹ sư canh tác)\"\n      }\n    },\n    \"permissions\": [\n      \"manage_batches\",\n      \"manage_farming_logs\",\n      \"generate_qr_code\",\n      \"record_waste\",\n      \"upload_certification_docs\"\n    ]\n  }\n}"
-        },
-        {
-          "name": "403 Forbidden - Sai Role khi gọi vào Route không thuộc quyền",
-          "status": "Forbidden",
-          "code": 403,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Truy cập bị từ chối! Vai trò [Nhân viên Nông trại] không được phép truy cập vào chức năng này. Quyền yêu cầu: [admin].\"\n}"
-        }
-      ]
-    },
-    {
-      "name": "5. [Admin Only] Tạo tài khoản nhân viên nội bộ (Farm Staff / Sales)",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Accept", "value": "application/json" },
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{access_token}}" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"role_name\": \"farm_staff\",\n  \"full_name\": \"Lê Văn Kỹ Sư Mới\",\n  \"email\": \"kysu2@organicfarm.vn\",\n  \"phone\": \"0901888999\",\n  \"password\": \"Staff@123\",\n  \"address\": \"Khu nhà màng B2, Nông trại Củ Chi\"\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/admin/staff-accounts",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "admin", "staff-accounts"]
-        },
-        "description": "Chỉ Admin (role_id = 5) mới được quyền tạo tài khoản cho Farm Staff (role_id = 3) hoặc Sales (role_id = 4)."
-      },
-      "response": [
-        {
-          "name": "201 Created - Tạo tài khoản nhân viên thành công",
-          "status": "Created",
-          "code": 201,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã khởi tạo tài khoản nhân viên nội bộ thành công.\",\n  \"data\": {\n    \"id\": 6,\n    \"role_id\": 3,\n    \"full_name\": \"Lê Văn Kỹ Sư Mới\",\n    \"email\": \"kysu2@organicfarm.vn\",\n    \"phone\": \"0901888999\",\n    \"role\": {\n      \"id\": 3,\n      \"name\": \"farm_staff\",\n      \"display_name\": \"Nhân viên Nông trại (Kỹ sư canh tác)\"\n    }\n  }\n}"
-        }
-      ]
-    },
-    {
-      "name": "6. [Cloudinary Media] Upload Ảnh/Video (Nhật ký canh tác / Khiếu nại / Kiểm định)",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Accept", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{access_token}}" }
-        ],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
+          "name": "1.1. [Guest] Lấy cấu hình quyền hạn Khách vãng lai",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/guest-session", "host": ["{{base_url}}"], "path": ["auth", "guest-session"] }
+          },
+          "response": [
             {
-              "key": "files[]",
-              "type": "file",
-              "src": ["anh_nhat_ky_tuoi_rau.jpg", "video_thu_hoach_lo_01.mp4"],
-              "description": "Hỗ trợ upload 1 hoặc nhiều ảnh/video cùng lúc (tối đa 50MB/file)"
-            },
-            {
-              "key": "module",
-              "value": "farming_logs",
-              "type": "text",
-              "description": "Nhận 1 trong các giá trị: products | certifications | farming_logs | qr_codes | complaints | waste_evidence"
+              "name": "200 OK - Guest Role Info",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Phiên truy cập dành cho Khách vãng lai (Guest).\",\n  \"data\": {\n    \"role\": {\n      \"id\": 1,\n      \"name\": \"guest\",\n      \"display_name\": \"Khách vãng lai\"\n    },\n    \"permissions\": [\"view_products\", \"view_brand_story\", \"scan_qr_traceability\", \"view_farming_logs\"],\n    \"restricted_actions\": [\"place_order\", \"subscribe_package\", \"loyalty_points\", \"submit_complaint\"]\n  }\n}"
             }
           ]
         },
-        "url": {
-          "raw": "{{base_url}}/api/v1/media/upload",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "media", "upload"]
-        },
-        "description": "Trả về mảng URL từ Cloudinary để lưu trực tiếp vào các cột JSON `media_urls`, `evidence_media_urls` hoặc `certification_doc_url` trong CSDL."
-      },
-      "response": [
         {
-          "name": "200 OK - Upload Cloudinary thành công",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Tải lên Cloudinary thành công 2 tệp tin.\",\n  \"data\": {\n    \"module\": \"farming_logs\",\n    \"urls\": [\n      \"https://res.cloudinary.com/organic-farm/image/upload/v1731500001/organic_farm/farming_logs/anh_nhat_ky_tuoi_rau.jpg\",\n      \"https://res.cloudinary.com/organic-farm/video/upload/v1731500002/organic_farm/farming_logs/video_thu_hoach_lo_01.mp4\"\n    ],\n    \"files_detail\": [\n      {\n        \"url\": \"https://res.cloudinary.com/organic-farm/image/upload/v1731500001/organic_farm/farming_logs/anh_nhat_ky_tuoi_rau.jpg\",\n        \"public_id\": \"organic_farm/farming_logs/anh_nhat_ky_tuoi_rau\",\n        \"resource_type\": \"image\",\n        \"format\": \"jpg\"\n      },\n      {\n        \"url\": \"https://res.cloudinary.com/organic-farm/video/upload/v1731500002/organic_farm/farming_logs/video_thu_hoach_lo_01.mp4\",\n        \"public_id\": \"organic_farm/farming_logs/video_thu_hoach_lo_01\",\n        \"resource_type\": \"video\",\n        \"format\": \"mp4\"\n      }\n    ]\n  }\n}"
+          "name": "1.2. [Customer] Đăng ký tài khoản Khách hàng",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Nguyễn Minh Khách Hàng\",\n  \"email\": \"khachhang@gmail.com\",\n  \"phone\": \"0909123456\",\n  \"password\": \"Password@123\",\n  \"password_confirmation\": \"Password@123\",\n  \"address\": \"65 Huỳnh Thúc Kháng, Quận 1, TP.HCM\",\n  \"latitude\": 10.77159500,\n  \"longitude\": 106.70175500\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+          },
+          "response": [
+            {
+              "name": "201 Created - Đăng ký thành công",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng ký tài khoản khách hàng thành công.\",\n  \"data\": {\n    \"access_token\": \"1|sanctum_customer_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/customer/home\",\n    \"user\": {\n      \"id\": 5,\n      \"role_id\": 2,\n      \"full_name\": \"Nguyễn Minh Khách Hàng\",\n      \"email\": \"khachhang@gmail.com\",\n      \"phone\": \"0909123456\",\n      \"loyalty_points\": 0\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.3. [Auth Login] Đăng nhập chung 4 Roles",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@organicfarm.vn\",\n  \"password\": \"Password@123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Admin Login",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"5|sanctum_admin_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/admin/analytics\",\n    \"user\": {\n      \"id\": 1,\n      \"role_id\": 5,\n      \"full_name\": \"Chủ Nông Trại Admin\",\n      \"email\": \"admin@organicfarm.vn\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.4. [Auth Profile] Lấy thông tin User hiện tại (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          },
+          "response": []
+        },
+        {
+          "name": "1.5. [Cloudinary] Upload Ảnh/Video đa phương tiện",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "files[]", "type": "file", "src": [] },
+                { "key": "module", "value": "farming_logs", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/media/upload", "host": ["{{base_url}}"], "path": ["media", "upload"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Upload thành công",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Tải lên Cloudinary thành công.\",\n  \"data\": {\n    \"module\": \"farming_logs\",\n    \"urls\": [\"https://res.cloudinary.com/organic-farm/image/upload/sample.jpg\"]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.6. [Auth Logout] Đăng xuất",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "7. [Auth Logout] Đăng xuất & Thu hồi Token",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Accept", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{access_token}}" }
-        ],
-        "url": {
-          "raw": "{{base_url}}/api/v1/auth/logout",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "auth", "logout"]
-        }
-      },
-      "response": [
+      "name": "2. Phân hệ Khách hàng Customer App (Dành cho Người 4)",
+      "item": [
         {
-          "name": "200 OK - Đã đăng xuất",
-          "status": "OK",
-          "code": 200,
-          "header": [{ "key": "Content-Type", "value": "application/json" }],
-          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã đăng xuất và hủy phiên làm việc thành công.\"\n}"
+          "name": "2.1. Lấy danh sách sản phẩm (Kèm bộ lọc VietGAP/USDA)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/products?category=rau-an-la&certification=VietGAP",
+              "host": ["{{base_url}}"],
+              "path": ["products"],
+              "query": [
+                { "key": "category", "value": "rau-an-la" },
+                { "key": "certification", "value": "VietGAP" }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - Danh sách sản phẩm mẫu",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"id\": 1,\n      \"name\": \"Cà Chua Hữu Cơ VietGAP\",\n      \"slug\": \"ca-chua-huu-co-vietgap\",\n      \"sku\": \"PROD-CA-CHUA-01\",\n      \"category\": \"Rau củ quả\",\n      \"unit\": \"kg\",\n      \"base_price\": 35000,\n      \"certification\": \"VietGAP\",\n      \"thumbnail_url\": \"https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=500\",\n      \"current_stock\": 45.5,\n      \"nearest_expiry\": \"2026-11-20\",\n      \"is_flash_sale\": false\n    },\n    {\n      \"id\": 2,\n      \"name\": \"Cải Bó Xôi Organic USDA\",\n      \"slug\": \"cai-bo-xoi-organic-usda\",\n      \"sku\": \"PROD-BO-XOI-02\",\n      \"category\": \"Rau ăn lá\",\n      \"unit\": \"kg\",\n      \"base_price\": 48000,\n      \"certification\": \"USDA Organic\",\n      \"thumbnail_url\": \"https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=500\",\n      \"current_stock\": 20.0,\n      \"nearest_expiry\": \"2026-11-18\",\n      \"is_flash_sale\": true,\n      \"discount_percent\": 30\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.2. Lấy chi tiết sản phẩm",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/products/1", "host": ["{{base_url}}"], "path": ["products", "1"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Chi tiết sản phẩm mẫu",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Cà Chua Hữu Cơ VietGAP\",\n    \"description\": \"Cà chua được trồng trong nhà kính Củ Chi, hoàn toàn không sử dụng thuốc bảo vệ thực vật hóa học.\",\n    \"certification\": \"VietGAP\",\n    \"certification_doc_url\": \"https://res.cloudinary.com/organic-farm/image/upload/cert_vietgap.pdf\",\n    \"active_batch\": {\n      \"batch_code\": \"BATCH-CC-20261110-01\",\n      \"harvest_date\": \"2026-11-10\",\n      \"expiry_date\": \"2026-11-20\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.3. Quét mã QR nguồn gốc & Nhật ký minh bạch",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/batches/qr/BATCH-CC-20261110-01", "host": ["{{base_url}}"], "path": ["batches", "qr", "BATCH-CC-20261110-01"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Thông tin truy xuất nguồn gốc",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"batch_code\": \"BATCH-CC-20261110-01\",\n    \"product_name\": \"Cà Chua Hữu Cơ VietGAP\",\n    \"farm_location\": \"Nhà màng A1, Nông trại Củ Chi, TP.HCM\",\n    \"farm_staff_in_charge\": \"Kỹ sư Nguyễn Văn A\",\n    \"harvest_date\": \"2026-11-10\",\n    \"expiry_date\": \"2026-11-20\",\n    \"soil_water_test_result\": \"Đạt chuẩn an toàn kim loại nặng & vi sinh vật\",\n    \"timeline_logs\": [\n      {\n        \"stage\": \"gieo_hat\",\n        \"title\": \"Gieo hạt giống hữu cơ F1\",\n        \"description\": \"Ươm hạt trong giá thể xơ dừa đã xử lý nấm bệnh.\",\n        \"logged_at\": \"2026-09-01 08:30:00\",\n        \"media_urls\": [\"https://res.cloudinary.com/organic-farm/image/upload/sample1.jpg\"]\n      },\n      {\n        \"stage\": \"thu_hoach\",\n        \"title\": \"Thu hoạch quả chín cây đợt 1\",\n        \"description\": \"Thu hái thủ công vào sáng sớm, phân loại đóng hộp.\",\n        \"logged_at\": \"2026-11-10 06:15:00\",\n        \"media_urls\": [\"https://res.cloudinary.com/organic-farm/image/upload/sample2.jpg\"]\n      }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.4. Tính phí ship động theo km (Google Maps API)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_address\": \"227 Nguyễn Văn Cừ, Phường 4, Quận 5, TP.HCM\",\n  \"latitude\": 10.762622,\n  \"longitude\": 106.682172\n}"
+            },
+            "url": { "raw": "{{base_url}}/shipping/calculate-km", "host": ["{{base_url}}"], "path": ["shipping", "calculate-km"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Tính km & phí ship",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"distance_km\": 18.5,\n    \"duration_text\": \"35 phút\",\n    \"shipping_fee\": 45000,\n    \"farm_origin\": \"Nông trại Củ Chi, TP.HCM\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.5. Đặt hàng lẻ (Checkout FEFO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery_address\": \"227 Nguyễn Văn Cừ, Quận 5, TP.HCM\",\n  \"distance_km\": 18.5,\n  \"payment_method\": \"momo\",\n  \"use_loyalty_points\": 50,\n  \"items\": [\n    { \"product_id\": 1, \"quantity\": 2.5 }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/orders/checkout-single", "host": ["{{base_url}}"], "path": ["orders", "checkout-single"] }
+          },
+          "response": [
+            {
+              "name": "201 Created - Đặt hàng thành công",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đặt hàng thành công. Hệ thống tự động xuất kho theo nguyên tắc FEFO.\",\n  \"data\": {\n    \"order_code\": \"ORD-20261116-8921\",\n    \"subtotal\": 87500,\n    \"shipping_fee\": 45000,\n    \"loyalty_discount\": 50000,\n    \"total_amount\": 82500,\n    \"payment_status\": \"cho_thanh_toan\",\n    \"order_status\": \"cho_xac_nhan\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.6. Đăng ký Gói nông sản định kỳ (Subscription)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"package_name\": \"Gói Rau Củ Tươi Gia Đình (4 Tuần)\",\n  \"weight_per_delivery\": 3.5,\n  \"delivery_days\": [\"Tuesday\", \"Friday\"],\n  \"delivery_address\": \"Landmark 81, Bình Thạnh, TP.HCM\",\n  \"distance_km\": 22.0,\n  \"start_date\": \"2026-11-20\",\n  \"total_price\": 1200000\n}"
+            },
+            "url": { "raw": "{{base_url}}/subscriptions", "host": ["{{base_url}}"], "path": ["subscriptions"] }
+          },
+          "response": [
+            {
+              "name": "201 Created - Đăng ký gói định kỳ thành công",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng ký gói định kỳ thành công. Tự động sinh đơn lúc 01:00 Thứ 3 & Thứ 6.\",\n  \"data\": {\n    \"subscription_id\": 12,\n    \"status\": \"dang_hoat_dong\",\n    \"schedule\": \"2 lần/tuần (Thứ 3 & Thứ 6)\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.7. Tạo link thanh toán MoMo",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": 8921\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/momo/create-payment", "host": ["{{base_url}}"], "path": ["payments", "momo", "create-payment"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Link thanh toán MoMo",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"pay_url\": \"https://test-payment.momo.vn/v2/gateway/api/create?orderId=ORD-8921\",\n    \"qr_code_url\": \"https://momo.vn/qr/pay-sample\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.8. Gửi yêu cầu Khiếu nại & Đổi trả kèm ảnh/video",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": 8921,\n  \"reason\": \"Rau dập nát lá khoảng 40% trong lúc vận chuyển\",\n  \"evidence_media_urls\": [\n    \"https://res.cloudinary.com/organic-farm/image/upload/rau_dap.jpg\"\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/complaints", "host": ["{{base_url}}"], "path": ["complaints"] }
+          },
+          "response": [
+            {
+              "name": "201 Created - Khiếu nại đã tiếp nhận",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã gửi yêu cầu khiếu nại thành công.\",\n  \"data\": {\n    \"complaint_id\": 5,\n    \"status\": \"cho_tiep_nhan\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.9. Xem Điểm thưởng Loyalty của Khách",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/customer/loyalty-points", "host": ["{{base_url}}"], "path": ["customer", "loyalty-points"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Điểm tích lũy",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"current_points\": 150,\n    \"equivalent_vnd\": 150000,\n    \"history\": [\n      { \"action\": \"Hoàn tất đơn hàng ORD-8901\", \"points\": \"+50\", \"date\": \"2026-11-12\" },\n      { \"action\": \"Trừ tiền đơn hàng ORD-8921\", \"points\": \"-50\", \"date\": \"2026-11-16\" }\n    ]\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Phân hệ Farm Staff Dashboard (Dành cho Người 5)",
+      "item": [
+        {
+          "name": "3.1. Danh sách Lô hàng & Khởi tạo Lô mới (FEFO)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/farm/batches", "host": ["{{base_url}}"], "path": ["farm", "batches"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Danh sách Lô hàng FEFO",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"id\": 1,\n      \"batch_code\": \"BATCH-CC-20261110-01\",\n      \"product_name\": \"Cà Chua Hữu Cơ VietGAP\",\n      \"harvest_date\": \"2026-11-10\",\n      \"expiry_date\": \"2026-11-20\",\n      \"initial_quantity\": 100.0,\n      \"current_quantity\": 45.5,\n      \"wasted_quantity\": 2.0,\n      \"status\": \"con_hang\",\n      \"qr_code_download_url\": \"https://api.qrserver.com/v1/create-qr-code/?data=BATCH-CC-20261110-01\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.2. Đăng bài Nhật ký canh tác (Timeline)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": 1,\n  \"stage\": \"tuoi_tieu\",\n  \"title\": \"Tưới nước nhỏ giọt kết hợp vi sinh\",\n  \"description\": \"Tưới nước qua hệ thống lọc định kỳ 2 tiếng/lần.\",\n  \"media_urls\": [\"https://res.cloudinary.com/organic-farm/image/upload/sample_log.jpg\"],\n  \"logged_at\": \"2026-11-16 14:00:00\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/farm/farming-logs", "host": ["{{base_url}}"], "path": ["farm", "farming-logs"] }
+          },
+          "response": [
+            {
+              "name": "201 Created - Đăng nhật ký thành công",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã ghi nhận nhật ký canh tác thành công.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.3. Ghi nhận Xuất hủy / Hao hụt nội bộ",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": 1,\n  \"quantity\": 3.5,\n  \"reason\": \"Rau úng lá do mưa kéo dài\",\n  \"evidence_image_url\": \"https://res.cloudinary.com/organic-farm/image/upload/waste.jpg\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/farm/waste-records", "host": ["{{base_url}}"], "path": ["farm", "waste-records"] }
+          },
+          "response": [
+            {
+              "name": "201 Created - Đã trừ kho xuất hủy",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã ghi nhận trừ kho xuất hủy 3.5kg thành công.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Phân hệ Sales Dashboard (Dành cho Người 5)",
+      "item": [
+        {
+          "name": "4.1. Danh sách đơn hàng & Điều phối ship hỏa tốc",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/sales/orders", "host": ["{{base_url}}"], "path": ["sales", "orders"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Danh sách đơn hàng Sales",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"order_id\": 8921,\n      \"order_code\": \"ORD-20261116-8921\",\n      \"customer_name\": \"Nguyễn Văn Khách\",\n      \"customer_phone\": \"0909123456\",\n      \"delivery_address\": \"227 Nguyễn Văn Cừ, Quận 5\",\n      \"distance_km\": 18.5,\n      \"total_amount\": 82500,\n      \"payment_status\": \"da_thanh_toan\",\n      \"order_status\": \"cho_xac_nhan\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "4.2. Cảnh báo Lô sắp hết hạn & Cấu hình Flash Sale",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/sales/alerts/near-expiry", "host": ["{{base_url}}"], "path": ["sales", "alerts", "near-expiry"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Cảnh báo Flash Sale",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": [\n    {\n      \"batch_id\": 2,\n      \"batch_code\": \"BATCH-BX-20261112\",\n      \"product_name\": \"Cải Bó Xôi Organic\",\n      \"days_left\": 2,\n      \"remaining_stock\": 20.0,\n      \"alert_message\": \"Lô hàng còn 2 ngày hết hạn! Đề xuất bật Flash Sale giảm 30%.\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "4.3. Duyệt khiếu nại (Hoàn tiền hoặc Tạo đơn giao bù 0đ)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution_type\": \"giao_bu_hang\",\n  \"sales_note\": \"Tạo đơn giao bù 2kg rau tươi giá 0đ vào chiều nay.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/sales/complaints/5/approve", "host": ["{{base_url}}"], "path": ["sales", "complaints", "5", "approve"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Đã duyệt khiếu nại",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã duyệt khiếu nại và tự động tạo đơn hàng giao bù 0đ.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Phân hệ Admin Dashboard (Dành cho Người 5)",
+      "item": [
+        {
+          "name": "5.1. Tạo tài khoản nhân viên nội bộ (Staff Accounts)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_name\": \"farm_staff\",\n  \"full_name\": \"Lê Văn Kỹ Sư Mới\",\n  \"email\": \"kysu2@organicfarm.vn\",\n  \"phone\": \"0901888999\",\n  \"password\": \"Staff@123\",\n  \"address\": \"Khu nhà màng B2, Nông trại Củ Chi\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/staff-accounts", "host": ["{{base_url}}"], "path": ["admin", "staff-accounts"] }
+          },
+          "response": []
+        },
+        {
+          "name": "5.2. Biểu đồ thống kê doanh thu, hao hụt & khách mua lại",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/dashboard-stats", "host": ["{{base_url}}"], "path": ["admin", "dashboard-stats"] }
+          },
+          "response": [
+            {
+              "name": "200 OK - Dữ liệu biểu đồ Admin",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"summary\": {\n      \"total_revenue\": 145000000,\n      \"total_orders\": 850,\n      \"waste_rate_percent\": 3.8,\n      \"repeat_customer_rate_percent\": 68.5\n    },\n    \"revenue_by_month\": [\n      { \"month\": \"Tháng 8\", \"revenue\": 35000000 },\n      { \"month\": \"Tháng 9\", \"revenue\": 42000000 },\n      { \"month\": \"Tháng 10\", \"revenue\": 68000000 }\n    ],\n    \"waste_by_category\": [\n      { \"category\": \"Rau ăn lá\", \"wasted_kg\": 45.0 },\n      { \"category\": \"Rau ăn quả\", \"wasted_kg\": 12.0 },\n      { \"category\": \"Trái cây\", \"wasted_kg\": 8.5 }\n    ]\n  }\n}"
+            }
+          ]
         }
       ]
     }
