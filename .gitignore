@@ -1,0 +1,21 @@
+# Environment files
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Logs
+backend/storage/logs/*.log
+*.log
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Cache
+backend/bootstrap/cache/*.php
+!backend/bootstrap/cache/.gitignore
+
+# OS Files
+.DS_Store
+Thumbs.db

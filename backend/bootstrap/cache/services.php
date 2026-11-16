@@ -31,6 +31,7 @@
     27 => 'SimpleSoftwareIO\\QrCode\\QrCodeServiceProvider',
     28 => 'Spatie\\Permission\\PermissionServiceProvider',
     29 => 'App\\Providers\\AppServiceProvider',
+    30 => 'App\\Providers\\RouteServiceProvider',
   ),
   'eager' => 
   array (
@@ -51,6 +52,7 @@
     14 => 'SimpleSoftwareIO\\QrCode\\QrCodeServiceProvider',
     15 => 'Spatie\\Permission\\PermissionServiceProvider',
     16 => 'App\\Providers\\AppServiceProvider',
+    17 => 'App\\Providers\\RouteServiceProvider',
   ),
   'deferred' => 
   array (

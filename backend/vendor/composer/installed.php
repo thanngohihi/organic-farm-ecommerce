@@ -3,7 +3,7 @@
         'name' => 'laravel/organic-farm-backend',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => 'eccf2d78019c5ddce0390892b9b81c13acc6cfc8',
+        'reference' => 'e6970181b67b999df3a1b800135d0f3fb48538e2',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -382,7 +382,7 @@
         'laravel/organic-farm-backend' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => 'eccf2d78019c5ddce0390892b9b81c13acc6cfc8',
+            'reference' => 'e6970181b67b999df3a1b800135d0f3fb48538e2',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

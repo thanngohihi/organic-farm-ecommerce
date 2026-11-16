@@ -1,0 +1,273 @@
+{
+  "info": {
+    "_postman_id": "organic-farm-auth-5-roles-v1",
+    "name": "Organic Farm Ecommerce - Tuần 1: Auth 5 Roles & Cloudinary API",
+    "description": "Tài liệu API Specification Tuần 1 của Người 1. Chuẩn hóa cấu trúc dữ liệu Request/Response cho 5 vai trò: Guest, Customer, Farm Staff, Sales, Admin và Upload Media lên Cloudinary.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. [Role 1 - Guest] Lấy cấu hình quyền hạn Khách vãng lai",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/auth/guest-session",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "auth", "guest-session"]
+        },
+        "description": "Dành cho Khách vãng lai (chưa đăng nhập). Chỉ có quyền xem sản phẩm, câu chuyện thương hiệu và quét mã QR truy xuất nguồn gốc."
+      },
+      "response": [
+        {
+          "name": "200 OK - Guest Role Info",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Phiên truy cập dành cho Khách vãng lai (Guest).\",\n  \"data\": {\n    \"role\": {\n      \"id\": 1,\n      \"name\": \"guest\",\n      \"display_name\": \"Khách vãng lai\"\n    },\n    \"permissions\": [\n      \"view_products\",\n      \"view_brand_story\",\n      \"scan_qr_traceability\",\n      \"view_farming_logs\"\n    ],\n    \"restricted_actions\": [\n      \"place_order\",\n      \"subscribe_package\",\n      \"loyalty_points\",\n      \"submit_complaint\"\n    ]\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "2. [Role 2 - Customer] Đăng ký tài khoản Khách hàng",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"Nguyễn Minh Khách Hàng\",\n  \"email\": \"khachhang@gmail.com\",\n  \"phone\": \"0909123456\",\n  \"password\": \"Password@123\",\n  \"password_confirmation\": \"Password@123\",\n  \"address\": \"65 Huỳnh Thúc Kháng, Phường Bến Nghé, Quận 1, TP.HCM\",\n  \"latitude\": 10.77159500,\n  \"longitude\": 106.70175500\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/auth/register",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "auth", "register"]
+        },
+        "description": "Khách hàng đăng ký mới mặc định được gán role_id = 2 (customer) và loyalty_points = 0."
+      },
+      "response": [
+        {
+          "name": "201 Created - Đăng ký Customer thành công",
+          "status": "Created",
+          "code": 201,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng ký tài khoản khách hàng thành công.\",\n  \"data\": {\n    \"access_token\": \"1|sanctum_customer_token_8f9a2b3c4d\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/customer/home\",\n    \"user\": {\n      \"id\": 5,\n      \"role_id\": 2,\n      \"full_name\": \"Nguyễn Minh Khách Hàng\",\n      \"email\": \"khachhang@gmail.com\",\n      \"phone\": \"0909123456\",\n      \"address\": \"65 Huỳnh Thúc Kháng, Phường Bến Nghé, Quận 1, TP.HCM\",\n      \"latitude\": \"10.77159500\",\n      \"longitude\": \"106.70175500\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 2,\n        \"name\": \"customer\",\n        \"display_name\": \"Khách hàng\"\n      }\n    },\n    \"permissions\": [\n      \"view_products\",\n      \"scan_qr_traceability\",\n      \"place_single_order\",\n      \"register_subscription\",\n      \"use_loyalty_points\",\n      \"submit_complaint\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "422 Unprocessable Entity - Lỗi trùng Email/SĐT",
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Dữ liệu đầu vào không hợp lệ.\",\n  \"errors\": {\n    \"email\": [\"Email này đã được sử dụng.\"],\n    \"phone\": [\"Số điện thoại này đã được đăng ký.\"]\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "3. [Auth Login] Đăng nhập chung & Phân luồng 4 Roles có tài khoản",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@organicfarm.vn\",\n  \"password\": \"Password@123\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "auth", "login"]
+        },
+        "description": "API Đăng nhập trả về cấu trúc Role, danh sách Permissions và đường dẫn Redirect tương ứng cho từng Role (Customer, Farm Staff, Sales, Admin)."
+      },
+      "response": [
+        {
+          "name": "200 OK - [Role 2: Customer Login]",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"2|sanctum_customer_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/customer/home\",\n    \"user\": {\n      \"id\": 4,\n      \"role_id\": 2,\n      \"full_name\": \"Nguyễn Văn Khách Hàng\",\n      \"email\": \"customer@gmail.com\",\n      \"phone\": \"0901000004\",\n      \"address\": \"227 Nguyễn Văn Cừ, Quận 5, TP.HCM\",\n      \"latitude\": \"10.76262200\",\n      \"longitude\": \"106.68217200\",\n      \"loyalty_points\": 150,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 2,\n        \"name\": \"customer\",\n        \"display_name\": \"Khách hàng\"\n      }\n    },\n    \"permissions\": [\n      \"view_products\",\n      \"scan_qr_traceability\",\n      \"place_single_order\",\n      \"register_subscription\",\n      \"use_loyalty_points\",\n      \"submit_complaint\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "200 OK - [Role 3: Farm Staff Login] (Không xem được Doanh thu/Khách hàng)",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"3|sanctum_farm_staff_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/farm-staff/batches\",\n    \"user\": {\n      \"id\": 2,\n      \"role_id\": 3,\n      \"full_name\": \"Kỹ Sư Canh Tác (Farm Staff)\",\n      \"email\": \"staff@organicfarm.vn\",\n      \"phone\": \"0901000002\",\n      \"address\": \"Khu nhà kính A1, Nông trại Củ Chi\",\n      \"latitude\": \"10.97460000\",\n      \"longitude\": \"106.49320000\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 3,\n        \"name\": \"farm_staff\",\n        \"display_name\": \"Nhân viên Nông trại (Kỹ sư canh tác)\"\n      }\n    },\n    \"permissions\": [\n      \"manage_batches\",\n      \"manage_farming_logs\",\n      \"generate_qr_code\",\n      \"record_waste\",\n      \"upload_certification_docs\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "200 OK - [Role 4: Sales / CSKH Login]",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"4|sanctum_sales_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/sales/orders\",\n    \"user\": {\n      \"id\": 3,\n      \"role_id\": 4,\n      \"full_name\": \"Nhân Viên CSKH & Điều Phối (Sales)\",\n      \"email\": \"sales@organicfarm.vn\",\n      \"phone\": \"0901000003\",\n      \"address\": \"Trạm điều phối Quận 1, TP.HCM\",\n      \"latitude\": \"10.77690000\",\n      \"longitude\": \"106.70090000\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 4,\n        \"name\": \"sales\",\n        \"display_name\": \"Nhân viên Bán hàng / CSKH\"\n      }\n    },\n    \"permissions\": [\n      \"manage_orders\",\n      \"dispatch_express_delivery\",\n      \"configure_flash_sale\",\n      \"resolve_complaints\",\n      \"approve_refund_or_compensate\",\n      \"record_waste\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "200 OK - [Role 5: Admin Login]",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đăng nhập thành công.\",\n  \"data\": {\n    \"access_token\": \"5|sanctum_admin_token_example\",\n    \"token_type\": \"Bearer\",\n    \"redirect_to\": \"/dashboard/admin/analytics\",\n    \"user\": {\n      \"id\": 1,\n      \"role_id\": 5,\n      \"full_name\": \"Chủ Nông Trại Admin\",\n      \"email\": \"admin@organicfarm.vn\",\n      \"phone\": \"0901000001\",\n      \"address\": \"Nông trại Organic, Củ Chi, TP.HCM\",\n      \"latitude\": \"10.97460000\",\n      \"longitude\": \"106.49320000\",\n      \"loyalty_points\": 0,\n      \"is_active\": true,\n      \"role\": {\n        \"id\": 5,\n        \"name\": \"admin\",\n        \"display_name\": \"Quản trị viên (Chủ nông trại)\"\n      }\n    },\n    \"permissions\": [\n      \"full_system_access\",\n      \"manage_staff_accounts\",\n      \"manage_categories_and_products\",\n      \"view_revenue_and_waste_analytics\",\n      \"manage_batches\",\n      \"manage_orders\",\n      \"resolve_complaints\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "401 Unauthorized - Sai mật khẩu",
+          "status": "Unauthorized",
+          "code": 401,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Email hoặc mật khẩu không chính xác.\"\n}"
+        },
+        {
+          "name": "403 Forbidden - Tài khoản bị khóa (is_active = false)",
+          "status": "Forbidden",
+          "code": 403,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ Quản trị viên nông trại.\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "4. [Auth Profile] Lấy thông tin User hiện tại & Kiểm tra Token",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/auth/me",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "auth", "me"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Thông tin tài khoản đang đăng nhập",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"data\": {\n    \"user\": {\n      \"id\": 2,\n      \"role_id\": 3,\n      \"full_name\": \"Kỹ Sư Canh Tác (Farm Staff)\",\n      \"email\": \"staff@organicfarm.vn\",\n      \"phone\": \"0901000002\",\n      \"role\": {\n        \"id\": 3,\n        \"name\": \"farm_staff\",\n        \"display_name\": \"Nhân viên Nông trại (Kỹ sư canh tác)\"\n      }\n    },\n    \"permissions\": [\n      \"manage_batches\",\n      \"manage_farming_logs\",\n      \"generate_qr_code\",\n      \"record_waste\",\n      \"upload_certification_docs\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "403 Forbidden - Sai Role khi gọi vào Route không thuộc quyền",
+          "status": "Forbidden",
+          "code": 403,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Truy cập bị từ chối! Vai trò [Nhân viên Nông trại] không được phép truy cập vào chức năng này. Quyền yêu cầu: [admin].\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "5. [Admin Only] Tạo tài khoản nhân viên nội bộ (Farm Staff / Sales)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role_name\": \"farm_staff\",\n  \"full_name\": \"Lê Văn Kỹ Sư Mới\",\n  \"email\": \"kysu2@organicfarm.vn\",\n  \"phone\": \"0901888999\",\n  \"password\": \"Staff@123\",\n  \"address\": \"Khu nhà màng B2, Nông trại Củ Chi\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/staff-accounts",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "admin", "staff-accounts"]
+        },
+        "description": "Chỉ Admin (role_id = 5) mới được quyền tạo tài khoản cho Farm Staff (role_id = 3) hoặc Sales (role_id = 4)."
+      },
+      "response": [
+        {
+          "name": "201 Created - Tạo tài khoản nhân viên thành công",
+          "status": "Created",
+          "code": 201,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã khởi tạo tài khoản nhân viên nội bộ thành công.\",\n  \"data\": {\n    \"id\": 6,\n    \"role_id\": 3,\n    \"full_name\": \"Lê Văn Kỹ Sư Mới\",\n    \"email\": \"kysu2@organicfarm.vn\",\n    \"phone\": \"0901888999\",\n    \"role\": {\n      \"id\": 3,\n      \"name\": \"farm_staff\",\n      \"display_name\": \"Nhân viên Nông trại (Kỹ sư canh tác)\"\n    }\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "6. [Cloudinary Media] Upload Ảnh/Video (Nhật ký canh tác / Khiếu nại / Kiểm định)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files[]",
+              "type": "file",
+              "src": ["anh_nhat_ky_tuoi_rau.jpg", "video_thu_hoach_lo_01.mp4"],
+              "description": "Hỗ trợ upload 1 hoặc nhiều ảnh/video cùng lúc (tối đa 50MB/file)"
+            },
+            {
+              "key": "module",
+              "value": "farming_logs",
+              "type": "text",
+              "description": "Nhận 1 trong các giá trị: products | certifications | farming_logs | qr_codes | complaints | waste_evidence"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/media/upload",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "media", "upload"]
+        },
+        "description": "Trả về mảng URL từ Cloudinary để lưu trực tiếp vào các cột JSON `media_urls`, `evidence_media_urls` hoặc `certification_doc_url` trong CSDL."
+      },
+      "response": [
+        {
+          "name": "200 OK - Upload Cloudinary thành công",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Tải lên Cloudinary thành công 2 tệp tin.\",\n  \"data\": {\n    \"module\": \"farming_logs\",\n    \"urls\": [\n      \"https://res.cloudinary.com/organic-farm/image/upload/v1731500001/organic_farm/farming_logs/anh_nhat_ky_tuoi_rau.jpg\",\n      \"https://res.cloudinary.com/organic-farm/video/upload/v1731500002/organic_farm/farming_logs/video_thu_hoach_lo_01.mp4\"\n    ],\n    \"files_detail\": [\n      {\n        \"url\": \"https://res.cloudinary.com/organic-farm/image/upload/v1731500001/organic_farm/farming_logs/anh_nhat_ky_tuoi_rau.jpg\",\n        \"public_id\": \"organic_farm/farming_logs/anh_nhat_ky_tuoi_rau\",\n        \"resource_type\": \"image\",\n        \"format\": \"jpg\"\n      },\n      {\n        \"url\": \"https://res.cloudinary.com/organic-farm/video/upload/v1731500002/organic_farm/farming_logs/video_thu_hoach_lo_01.mp4\",\n        \"public_id\": \"organic_farm/farming_logs/video_thu_hoach_lo_01\",\n        \"resource_type\": \"video\",\n        \"format\": \"mp4\"\n      }\n    ]\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "7. [Auth Logout] Đăng xuất & Thu hồi Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/auth/logout",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "auth", "logout"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK - Đã đăng xuất",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"Đã đăng xuất và hủy phiên làm việc thành công.\"\n}"
+        }
+      ]
+    }
+  ]
+}
