@@ -32,5 +32,6 @@ class Kernel extends HttpKernel
         'guest' => \Illuminate\Auth\Middleware\RedirectIfAuthenticated::class,
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'role' => \App\Http\Middleware\RoleMiddleware::class,
+        'ownership' => \App\Http\Middleware\EnsureResourceOwnership::class,
     ];
 }
