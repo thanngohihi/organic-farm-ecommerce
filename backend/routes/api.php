@@ -2,6 +2,8 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\MediaUploadController;
+use App\Http\Controllers\Api\FarmingLogController;
+use App\Http\Controllers\Api\BatchController;
 
 Route::prefix('v1')->group(function () {
 
@@ -12,6 +14,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/register', [AuthController::class, 'register']);         // Đăng ký Customer
         Route::post('/login', [AuthController::class, 'login']);               // Đăng nhập chung
     });
+
+    // API QR Code có thể để Public để khách hàng quét xem trực tiếp hoặc đưa vào Protected tùy ý
+    Route::get('/batches/qr/{id}', [BatchController::class, 'generateQr']);
 
     //2. PROTECTED ROUTES (Yêu cầu Sanctum Bearer Token)
     Route::middleware('auth:sanctum')->group(function () {
@@ -33,6 +38,9 @@ Route::prefix('v1')->group(function () {
         Route::prefix('farm')->middleware('role:farm_staff,admin')->group(function () {
             // Người 2 sẽ viết tiếp API Quản lý Lô (Batches), Nhật ký canh tác (Farming Logs), Sinh mã QR tại đây
             // Đảm bảo Sales không sửa được Nhật ký canh tác, và Farm Staff không xem được Doanh thu
+            Route::post('/farming-logs', [FarmingLogController::class, 'store']);       // Thêm nhật ký canh tác
+            Route::post('/batches/waste-record', [BatchController::class, 'recordWaste']); // Ghi nhận xuất hủy/hao hụt
+            Route::post('/batches/fefo-export', [BatchController::class, 'fefoExport']);   // Thuật toán trừ kho FEFO khi chốt đơn  
         });
 
         // --- NHÓM ROUTE DÀNH RIÊNG CHO SALES (Role 4) & ADMIN (Role 5) ---
