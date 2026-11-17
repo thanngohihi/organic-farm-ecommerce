@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+
 import {
     Search,
     Filter,
@@ -7,108 +8,221 @@ import {
     ShoppingCart,
     CheckCircle2,
     Leaf,
-    Clock
+    Clock,
+    Loader2
 } from 'lucide-react';
 
-const MOCK_PRODUCTS = [
-    {
-        id: 1,
-        name: "Cà Chua Cherry Hữu Cơ",
-        category: "Rau củ quả",
-        price: 45000,
-        unit: "Hộp 500g",
-        cert: "VietGAP",
-        image: "https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=600",
-        batch: "LOT-20261115-01",
-        expDays: 4
-    },
-    {
-        id: 2,
-        name: "Cải Kale Thu Hoạch Sáng",
-        category: "Rau xanh",
-        price: 38000,
-        unit: "Bó 300g",
-        cert: "USDA Organic",
-        image: "https://images.unsplash.com/photo-1515543904379-3d757afe72e4?w=600",
-        batch: "LOT-20261116-02",
-        expDays: 3
-    },
-    {
-        id: 3,
-        name: "Dâu Tây Đà Lạt Thượng Hạng",
-        category: "Trái cây tươi",
-        price: 120000,
-        unit: "Hộp 250g",
-        cert: "VietGAP",
-        image: "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=600",
-        batch: "LOT-20261116-05",
-        expDays: 2
-    }
-];
+import axios from 'axios';
 
-export default function HomePage() {
+const API_URL = 'http://localhost:8000/api/v1';
+
+export default function HomePage({ addToCart, cartItems = [] }) {
+
     const [selectedCategory, setSelectedCategory] = useState('Tất cả');
     const [searchTerm, setSearchTerm] = useState('');
-    const [cart, setCart] = useState([]);
+
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    // ==============================
+    // LẤY SẢN PHẨM TỪ LARAVEL API
+    // ==============================
+
+    const fetchProducts = async () => {
+        try {
+            setLoading(true);
+            setError('');
+
+            const response = await axios.get(
+                `${API_URL}/products`
+            );
+
+            if (response.data?.status !== 'success') {
+                throw new Error('Không thể lấy danh sách sản phẩm.');
+            }
+
+            const data = response.data?.data;
+
+            if (!Array.isArray(data)) {
+                throw new Error('Dữ liệu sản phẩm không hợp lệ.');
+            }
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const formattedProducts = data.map((product) => {
+
+                // Backend Laravel trả về exp_date
+                const expiryDate = product.exp_date
+                    ? new Date(`${product.exp_date}T00:00:00`)
+                    : null;
+
+                const expDays =
+                    expiryDate && !isNaN(expiryDate.getTime())
+                        ? Math.ceil(
+                            (expiryDate - today) /
+                            (1000 * 60 * 60 * 24)
+                        )
+                        : null;
+
+                return {
+                    ...product,
+
+                    id: product.id,
+
+                    name: product.name,
+
+                    price: Number(product.price || 0),
+
+                    unit: product.unit || 'kg',
+
+                    // Ánh xạ đúng tên trường từ Backend
+                    category: product.category_name || 'Khác',
+
+                    cert: product.certification || '',
+
+                    image: product.image || '',
+
+                    batch: product.batch_code || '',
+
+                    current_quantity: Number(product.stock || 0),
+
+                    expiry_date: product.exp_date || null,
+
+                    expDays
+                };
+            });
+
+            setProducts(formattedProducts);
+
+        } catch (err) {
+
+            console.error('Lỗi lấy sản phẩm:', err);
+
+            setError(
+                err.response?.data?.message ||
+                err.message ||
+                'Không thể tải danh sách sản phẩm.'
+            );
+
+        } finally {
+
+            setLoading(false);
+
+        }
+    };
+
+    useEffect(() => {
+        fetchProducts();
+    }, []);
+
+    // ==============================
+    // DANH MỤC SẢN PHẨM
+    // ==============================
 
     const categories = [
         'Tất cả',
-        'Rau xanh',
-        'Rau củ quả',
-        'Trái cây tươi'
+        ...new Set(
+            products
+                .map(product => product.category)
+                .filter(Boolean)
+        )
     ];
 
-    // Lọc sản phẩm theo danh mục và từ khóa
-    const filteredProducts = MOCK_PRODUCTS.filter((product) => {
+    // ==============================
+    // LỌC SẢN PHẨM
+    // ==============================
+
+    const filteredProducts = products.filter((product) => {
+
         const matchCategory =
             selectedCategory === 'Tất cả' ||
             product.category === selectedCategory;
 
         const matchSearch =
-            product.name.toLowerCase().includes(searchTerm.toLowerCase());
+            product.name
+                ?.toLowerCase()
+                .includes(searchTerm.toLowerCase());
 
         return matchCategory && matchSearch;
     });
 
-    // Thêm sản phẩm vào giỏ hàng
+    // ==============================
+    // THÊM SẢN PHẨM VÀO GIỎ HÀNG CHUNG
+    // ==============================
+
     const handleAddToCart = (product) => {
-        setCart((prevCart) => {
-            const existingProduct = prevCart.find(
-                (item) => item.id === product.id
-            );
 
-            if (existingProduct) {
-                return prevCart.map((item) =>
-                    item.id === product.id
-                        ? { ...item, quantity: item.quantity + 1 }
-                        : item
-                );
-            }
+        if (!addToCart) {
+            alert('Chức năng giỏ hàng chưa được kết nối!');
+            return;
+        }
 
-            return [
-                ...prevCart,
-                { ...product, quantity: 1 }
-            ];
-        });
+        if (
+            !product.batch ||
+            product.batch === 'N/A' ||
+            product.current_quantity <= 0
+        ) {
+            alert('Sản phẩm hiện chưa có lô hàng còn tồn kho.');
+            return;
+        }
 
-        alert(`Đã thêm ${product.name} vào giỏ hàng!`);
-    };
-
-    // Xem thông tin truy xuất nguồn gốc
-    const handleTraceability = (product) => {
-        alert(
-            `Thông tin truy xuất nguồn gốc:\n\n` +
-            `Sản phẩm: ${product.name}\n` +
-            `Mã lô: ${product.batch}\n` +
-            `Chứng nhận: ${product.cert}\n` +
-            `Hạn sử dụng còn: ${product.expDays} ngày`
+        // Kiểm tra số lượng hiện có trong giỏ
+        const existing = cartItems.find(
+            item => item.id === product.id
         );
+
+        const currentQuantity = existing
+            ? Number(existing.quantity)
+            : 0;
+
+        if (currentQuantity + 1 > product.current_quantity) {
+            alert('Số lượng tồn kho không đủ!');
+            return;
+        }
+
+        // Gọi hàm thêm giỏ hàng từ App.jsx
+        addToCart(product);
     };
+
+    // ==============================
+    // TRUY XUẤT NGUỒN GỐC
+    // ==============================
+
+    const handleTraceability = (product) => {
+
+        if (
+            !product.batch ||
+            product.batch === 'N/A'
+        ) {
+            alert('Sản phẩm chưa có lô hàng để truy xuất.');
+            return;
+        }
+
+        window.location.href =
+            `/traceability/${encodeURIComponent(product.batch)}`;
+    };
+
+    // ==============================
+    // TỔNG SẢN PHẨM TRONG GIỎ
+    // ==============================
+
+    const cartCount = cartItems.reduce(
+        (total, item) => total + Number(item.quantity || 0),
+        0
+    );
+
+    // ==============================
+    // GIAO DIỆN
+    // ==============================
 
     return (
+
         <div className="min-h-screen bg-gray-50">
 
-            {/* Banner */}
+            {/* BANNER */}
+
             <section className="relative overflow-hidden bg-green-700 px-4 py-20 text-white md:py-28">
 
                 <div className="absolute inset-0 opacity-10">
@@ -123,20 +237,29 @@ export default function HomePage() {
                     <div className="max-w-2xl">
 
                         <span className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-5 py-2 text-sm font-semibold">
+
                             <CheckCircle2 size={18} />
+
                             Nông trại sạch 100%
+
                         </span>
 
                         <h1 className="mb-6 text-4xl font-extrabold leading-tight md:text-6xl">
+
                             Nông Sản Tươi Xanh
+
                             <br />
+
                             Thu Hoạch Mỗi Sáng
+
                         </h1>
 
                         <p className="mb-8 text-base leading-8 text-green-50 md:text-lg">
+
                             Đặt hàng ngay hôm nay để nhận giao hàng tận nhà.
                             Tự do quét mã QR kiểm tra nhật ký gieo trồng
                             và nguồn gốc sản phẩm!
+
                         </p>
 
                         <button
@@ -152,10 +275,13 @@ export default function HomePage() {
                         </button>
 
                     </div>
+
                 </div>
+
             </section>
 
-            {/* Box Tìm Kiếm Nhanh */}
+            {/* TÌM KIẾM */}
+
             <section className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
 
                 <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-lg">
@@ -181,18 +307,20 @@ export default function HomePage() {
                     </button>
 
                 </div>
+
             </section>
 
-            {/* Main Content & Products */}
+            {/* DANH SÁCH SẢN PHẨM */}
+
             <section
                 id="products"
                 className="mx-auto max-w-7xl px-4 py-16"
             >
 
-                {/* Section Header */}
                 <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-center">
 
                     <div>
+
                         <span className="font-semibold uppercase tracking-widest text-green-600">
                             OrganicFarm
                         </span>
@@ -202,35 +330,43 @@ export default function HomePage() {
                         </h2>
 
                         <p className="mt-2 text-gray-500">
-                            Nông sản tươi ngon được tuyển chọn mỗi ngày.
+                            Nông sản tươi ngon được lấy trực tiếp từ cơ sở dữ liệu.
                         </p>
+
                     </div>
 
+                    {/* GIỎ HÀNG CHUNG */}
+
                     <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-green-700">
+
                         <ShoppingCart size={20} />
+
                         <span className="font-semibold">
-                            Giỏ hàng: {cart.reduce(
-                                (total, item) => total + item.quantity,
-                                0
-                            )} sản phẩm
+                            Giỏ hàng: {cartCount} sản phẩm
                         </span>
+
                     </div>
 
                 </div>
 
-                {/* Bộ Lọc Danh Mục */}
+                {/* BỘ LỌC DANH MỤC */}
+
                 <div className="mb-8">
 
                     <div className="mb-4 flex items-center gap-2 text-gray-700">
+
                         <Filter size={20} />
+
                         <span className="font-semibold">
                             Danh mục sản phẩm
                         </span>
+
                     </div>
 
                     <div className="flex flex-wrap gap-3">
 
                         {categories.map((cat) => (
+
                             <button
                                 key={cat}
                                 onClick={() => setSelectedCategory(cat)}
@@ -242,13 +378,64 @@ export default function HomePage() {
                             >
                                 {cat}
                             </button>
+
                         ))}
 
                     </div>
+
                 </div>
 
-                {/* Danh Sách Sản Phẩm */}
-                {filteredProducts.length > 0 ? (
+                {/* ĐANG TẢI */}
+
+                {loading && (
+
+                    <div className="flex flex-col items-center py-20 text-green-700">
+
+                        <Loader2
+                            size={40}
+                            className="animate-spin"
+                        />
+
+                        <p className="mt-4 font-semibold">
+                            Đang tải sản phẩm...
+                        </p>
+
+                    </div>
+
+                )}
+
+                {/* LỖI API */}
+
+                {!loading && error && (
+
+                    <div className="rounded-2xl bg-red-50 px-6 py-12 text-center">
+
+                        <h3 className="text-xl font-bold text-red-700">
+                            Không thể tải sản phẩm
+                        </h3>
+
+                        <p className="mt-2 text-red-600">
+                            {error}
+                        </p>
+
+                        <p className="mt-2 text-sm text-gray-500">
+                            Hãy kiểm tra Backend Laravel và API /api/v1/products.
+                        </p>
+
+                        <button
+                            onClick={fetchProducts}
+                            className="mt-5 rounded-lg bg-green-600 px-5 py-2 text-white hover:bg-green-700"
+                        >
+                            Thử lại
+                        </button>
+
+                    </div>
+
+                )}
+
+                {/* DANH SÁCH SẢN PHẨM */}
+
+                {!loading && !error && filteredProducts.length > 0 && (
 
                     <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3">
 
@@ -259,31 +446,59 @@ export default function HomePage() {
                                 className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                             >
 
-                                {/* Product Image */}
+                                {/* ẢNH SẢN PHẨM */}
+
                                 <div className="relative h-64 overflow-hidden bg-gray-100">
 
-                                    <img
-                                        src={p.image}
-                                        alt={p.name}
-                                        className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
-                                    />
+                                    {p.image ? (
 
-                                    <span className="absolute left-4 top-4 flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-bold text-white shadow">
-                                        <CheckCircle2 size={14} />
-                                        {p.cert}
-                                    </span>
+                                        <img
+                                            src={p.image}
+                                            alt={p.name}
+                                            className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                                        />
+
+                                    ) : (
+
+                                        <div className="flex h-full items-center justify-center">
+
+                                            <Leaf
+                                                size={60}
+                                                className="text-green-300"
+                                            />
+
+                                        </div>
+
+                                    )}
+
+                                    {p.cert && (
+
+                                        <span className="absolute left-4 top-4 flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-bold text-white shadow">
+
+                                            <CheckCircle2 size={14} />
+
+                                            {p.cert}
+
+                                        </span>
+
+                                    )}
 
                                     <button
                                         onClick={() => handleTraceability(p)}
-                                        className="absolute bottom-4 right-4 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-sm font-semibold text-green-700 shadow transition hover:bg-green-600 hover:text-white"
+                                        disabled={!p.batch || p.batch === 'N/A'}
+                                        className="absolute bottom-4 right-4 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-sm font-semibold text-green-700 shadow transition hover:bg-green-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                                     >
+
                                         <QrCode size={18} />
+
                                         Truy xuất
+
                                     </button>
 
                                 </div>
 
-                                {/* Product Information */}
+                                {/* THÔNG TIN SẢN PHẨM */}
+
                                 <div className="p-5">
 
                                     <span className="text-xs font-semibold uppercase tracking-wide text-green-600">
@@ -295,13 +510,21 @@ export default function HomePage() {
                                     </h3>
 
                                     <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
+
                                         <Clock size={16} />
-                                        Hạn sử dụng còn: {p.expDays} ngày
+
+                                        {p.expDays !== null
+                                            ? p.expDays >= 0
+                                                ? `Hạn sử dụng còn: ${p.expDays} ngày`
+                                                : 'Sản phẩm đã hết hạn'
+                                            : 'Chưa có thông tin hạn sử dụng'}
+
                                     </div>
 
                                     <div className="mb-4 flex items-center justify-between">
 
                                         <div>
+
                                             <span className="text-xl font-bold text-green-700">
                                                 {p.price.toLocaleString('vi-VN')}đ
                                             </span>
@@ -309,20 +532,38 @@ export default function HomePage() {
                                             <span className="ml-1 text-sm text-gray-500">
                                                 / {p.unit}
                                             </span>
+
                                         </div>
 
                                     </div>
 
+                                    <div className="mb-2 text-xs text-gray-400">
+                                        Mã lô: {p.batch || 'Chưa có lô hàng'}
+                                    </div>
+
                                     <div className="mb-4 text-xs text-gray-400">
-                                        Mã lô: {p.batch}
+                                        Tồn kho: {p.current_quantity} {p.unit}
                                     </div>
 
                                     <button
                                         onClick={() => handleAddToCart(p)}
-                                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 py-3 font-semibold text-white transition hover:bg-green-700"
+                                        disabled={
+                                            !p.batch ||
+                                            p.batch === 'N/A' ||
+                                            p.current_quantity <= 0 ||
+                                            (p.expDays !== null && p.expDays < 0)
+                                        }
+                                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                                     >
+
                                         <ShoppingCart size={19} />
-                                        Thêm vào giỏ hàng
+
+                                        {!p.batch ||
+                                        p.batch === 'N/A' ||
+                                        p.current_quantity <= 0
+                                            ? 'Tạm hết hàng'
+                                            : 'Thêm vào giỏ hàng'}
+
                                     </button>
 
                                 </div>
@@ -333,7 +574,11 @@ export default function HomePage() {
 
                     </div>
 
-                ) : (
+                )}
+
+                {/* KHÔNG CÓ SẢN PHẨM */}
+
+                {!loading && !error && filteredProducts.length === 0 && (
 
                     <div className="rounded-2xl bg-white py-16 text-center shadow-sm">
 
@@ -367,5 +612,6 @@ export default function HomePage() {
             </section>
 
         </div>
+
     );
 }
