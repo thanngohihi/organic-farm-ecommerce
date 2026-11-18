@@ -38,9 +38,6 @@ return [
 
     ],
 
-    'migrations' => [
-        'table' => 'migrations',
-        'update_date_on_modify' => true,
-    ],
+    'migrations' => 'migrations',
 
 ];
