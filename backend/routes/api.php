@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\MediaUploadController;
+use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ShippingController;
 use App\Http\Controllers\Api\V1\OrderController;
 
@@ -22,6 +23,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/register', [AuthController::class, 'register']);         // Đăng ký Customer
         Route::post('/login', [AuthController::class, 'login']);               // Đăng nhập chung
     });
+
+    // API Public: Danh sách sản phẩm (dành cho Guest & Customer)
+    Route::get('/products', [ProductController::class, 'index']);
 
     // API Public: Tính phí ship động theo km (Google Maps API)
     Route::post('/shipping/calculate-km', [ShippingController::class, 'calculateKm']);
