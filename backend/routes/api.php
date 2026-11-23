@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\MediaUploadController;
+use App\Http\Controllers\Api\V1\MoMoController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ShippingController;
 use App\Http\Controllers\Api\V1\OrderController;
@@ -14,6 +15,11 @@ use App\Http\Controllers\Api\V1\OrderController;
 */
 
 Route::prefix('v1')->group(function () {
+
+    // =========================================================================
+    // 0. WEBHOOK ROUTES (MoMo gọi trực tiếp từ server - KHÔNG dùng auth)
+    // =========================================================================
+    Route::post('/payments/momo/ipn-callback', [MoMoController::class, 'ipnCallback']);
 
     // =========================================================================
     // 1. PUBLIC ROUTES (Dành cho Guest, Đăng nhập & Tính phí Ship)
@@ -49,6 +55,9 @@ Route::prefix('v1')->group(function () {
         Route::prefix('customer')->middleware('role:customer')->group(function () {
             // API 2 (Tuần 2): Đặt đơn hàng mua lẻ
             Route::post('/orders/checkout-single', [OrderController::class, 'checkoutSingle']);
+
+            // API 3 (Tuần 3 - Người 1): Tạo link thanh toán MoMo
+            Route::post('/payments/momo/create-payment', [MoMoController::class, 'createPayment']);
         });
 
 
