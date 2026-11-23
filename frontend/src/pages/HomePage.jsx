@@ -9,7 +9,14 @@ import {
     CheckCircle2,
     Leaf,
     Clock,
-    Loader2
+    Loader2,
+    Sprout,
+    Facebook,
+    Mail,
+    ArrowUp,
+    Truck,
+    ShieldCheck,
+    Heart
 } from 'lucide-react';
 
 import axios from 'axios';
@@ -25,9 +32,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    // ==============================
+    // =====================================
     // LẤY SẢN PHẨM TỪ LARAVEL API
-    // ==============================
+    // =====================================
 
     const fetchProducts = async () => {
         try {
@@ -53,7 +60,6 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
             const formattedProducts = data.map((product) => {
 
-                // Backend Laravel trả về exp_date
                 const expiryDate = product.exp_date
                     ? new Date(`${product.exp_date}T00:00:00`)
                     : null;
@@ -68,28 +74,16 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 return {
                     ...product,
-
                     id: product.id,
-
                     name: product.name,
-
                     price: Number(product.price || 0),
-
                     unit: product.unit || 'kg',
-
-                    // Ánh xạ đúng tên trường từ Backend
                     category: product.category_name || 'Khác',
-
                     cert: product.certification || '',
-
                     image: product.image || '',
-
                     batch: product.batch_code || '',
-
                     current_quantity: Number(product.stock || 0),
-
                     expiry_date: product.exp_date || null,
-
                     expDays
                 };
             });
@@ -107,9 +101,7 @@ export default function HomePage({ addToCart, cartItems = [] }) {
             );
 
         } finally {
-
             setLoading(false);
-
         }
     };
 
@@ -117,9 +109,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
         fetchProducts();
     }, []);
 
-    // ==============================
+    // =====================================
     // DANH MỤC SẢN PHẨM
-    // ==============================
+    // =====================================
 
     const categories = [
         'Tất cả',
@@ -130,9 +122,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
         )
     ];
 
-    // ==============================
+    // =====================================
     // LỌC SẢN PHẨM
-    // ==============================
+    // =====================================
 
     const filteredProducts = products.filter((product) => {
 
@@ -143,14 +135,25 @@ export default function HomePage({ addToCart, cartItems = [] }) {
         const matchSearch =
             product.name
                 ?.toLowerCase()
-                .includes(searchTerm.toLowerCase());
+                .includes(searchTerm.toLowerCase().trim());
 
         return matchCategory && matchSearch;
     });
 
-    // ==============================
-    // THÊM SẢN PHẨM VÀO GIỎ HÀNG CHUNG
-    // ==============================
+    // =====================================
+    // NÚT TÌM KIẾM
+    // =====================================
+
+    const handleSearch = () => {
+        document.getElementById('products')
+            ?.scrollIntoView({
+                behavior: 'smooth'
+            });
+    };
+
+    // =====================================
+    // THÊM SẢN PHẨM VÀO GIỎ HÀNG
+    // =====================================
 
     const handleAddToCart = (product) => {
 
@@ -168,7 +171,6 @@ export default function HomePage({ addToCart, cartItems = [] }) {
             return;
         }
 
-        // Kiểm tra số lượng hiện có trong giỏ
         const existing = cartItems.find(
             item => item.id === product.id
         );
@@ -182,13 +184,12 @@ export default function HomePage({ addToCart, cartItems = [] }) {
             return;
         }
 
-        // Gọi hàm thêm giỏ hàng từ App.jsx
         addToCart(product);
     };
 
-    // ==============================
+    // =====================================
     // TRUY XUẤT NGUỒN GỐC
-    // ==============================
+    // =====================================
 
     const handleTraceability = (product) => {
 
@@ -204,28 +205,30 @@ export default function HomePage({ addToCart, cartItems = [] }) {
             `/traceability/${encodeURIComponent(product.batch)}`;
     };
 
-    // ==============================
+    // =====================================
     // TỔNG SẢN PHẨM TRONG GIỎ
-    // ==============================
+    // =====================================
 
     const cartCount = cartItems.reduce(
         (total, item) => total + Number(item.quantity || 0),
         0
     );
 
-    // ==============================
+    // =====================================
     // GIAO DIỆN
-    // ==============================
+    // =====================================
 
     return (
 
-        <div className="min-h-screen bg-gray-50">
+        <div id="home" className="min-h-screen bg-gray-50">
 
-            {/* BANNER */}
+            {/* ==============================
+                BANNER
+            ============================== */}
 
             <section className="relative overflow-hidden bg-green-700 px-4 py-20 text-white md:py-28">
 
-                <div className="absolute inset-0 opacity-10">
+                <div className="absolute inset-0 pointer-events-none opacity-10">
                     <Leaf
                         size={300}
                         className="absolute -right-10 -top-10"
@@ -263,13 +266,8 @@ export default function HomePage({ addToCart, cartItems = [] }) {
                         </p>
 
                         <button
-                            onClick={() => {
-                                document.getElementById('products')
-                                    ?.scrollIntoView({
-                                        behavior: 'smooth'
-                                    });
-                            }}
-                            className="rounded-lg bg-white px-7 py-3 font-bold text-green-700 transition hover:bg-green-50"
+                            onClick={handleSearch}
+                            className="rounded-lg bg-white px-7 py-3 font-bold text-green-700 transition hover:bg-green-50 hover:shadow-lg"
                         >
                             Mua sắm ngay
                         </button>
@@ -280,44 +278,55 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
             </section>
 
-            {/* TÌM KIẾM */}
+            {/* ==============================
+                TÌM KIẾM SẢN PHẨM
+            ============================== */}
 
             <section className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
 
-                <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-lg">
+                <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-lg">
 
                     <Search
                         size={23}
-                        className="ml-3 text-gray-400"
+                        className="ml-3 shrink-0 text-gray-400"
                     />
 
                     <input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handleSearch();
+                            }
+                        }}
                         placeholder="Tìm kiếm rau củ, trái cây..."
                         className="w-full border-none bg-transparent py-3 text-gray-700 outline-none"
                     />
 
                     <button
-                        onClick={() => setSearchTerm('')}
-                        className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
+                        onClick={handleSearch}
+                        className="shrink-0 rounded-lg bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-700"
                     >
-                        Xóa
+                        Tìm kiếm
                     </button>
 
                 </div>
 
             </section>
 
-            {/* DANH SÁCH SẢN PHẨM */}
+            {/* ==============================
+                DANH SÁCH SẢN PHẨM
+            ============================== */}
 
             <section
                 id="products"
-                className="mx-auto max-w-7xl px-4 py-16"
+                className="mx-auto max-w-7xl px-4 pb-16 pt-8"
             >
 
-                <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                {/* TIÊU ĐỀ */}
+
+                <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-center">
 
                     <div>
 
@@ -335,7 +344,7 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                     </div>
 
-                    {/* GIỎ HÀNG CHUNG */}
+                    {/* GIỎ HÀNG */}
 
                     <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-green-700">
 
@@ -349,11 +358,13 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 </div>
 
-                {/* BỘ LỌC DANH MỤC */}
+                {/* ==============================
+                    DANH MỤC
+                ============================== */}
 
-                <div className="mb-8">
+                <div className="mb-5">
 
-                    <div className="mb-4 flex items-center gap-2 text-gray-700">
+                    <div className="mb-3 flex items-center gap-2 text-gray-700">
 
                         <Filter size={20} />
 
@@ -385,7 +396,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 </div>
 
-                {/* ĐANG TẢI */}
+                {/* ==============================
+                    ĐANG TẢI
+                ============================== */}
 
                 {loading && (
 
@@ -404,7 +417,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 )}
 
-                {/* LỖI API */}
+                {/* ==============================
+                    LỖI API
+                ============================== */}
 
                 {!loading && error && (
 
@@ -433,7 +448,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 )}
 
-                {/* DANH SÁCH SẢN PHẨM */}
+                {/* ==============================
+                    DANH SÁCH SẢN PHẨM
+                ============================== */}
 
                 {!loading && !error && filteredProducts.length > 0 && (
 
@@ -576,7 +593,9 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 )}
 
-                {/* KHÔNG CÓ SẢN PHẨM */}
+                {/* ==============================
+                    KHÔNG CÓ SẢN PHẨM
+                ============================== */}
 
                 {!loading && !error && filteredProducts.length === 0 && (
 
@@ -609,9 +628,8 @@ export default function HomePage({ addToCart, cartItems = [] }) {
 
                 )}
 
-            </section>
+            </section>=         
 
         </div>
-
     );
 }

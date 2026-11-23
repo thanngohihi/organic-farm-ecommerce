@@ -1,661 +1,747 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
-  Sprout,
-  ShoppingBag,
-  BookOpen,
-  QrCode,
-  BarChart3,
-  Package,
-  ClipboardList,
-  LogIn,
-  LogOut,
-  UserCircle,
-  AlertCircle
+    Sprout,
+    ShoppingBag,
+    BookOpen,
+    QrCode,
+    BarChart3,
+    Package,
+    ClipboardList,
+    LogIn,
+    LogOut,
+    UserCircle,
+    AlertCircle,
+    RefreshCw,
+    AlertTriangle,
+    Award,
 } from 'lucide-react';
 
 import HomePage from './pages/HomePage';
 import BrandStory from './pages/BrandStory';
 import TraceabilityPage from './pages/TraceabilityPage';
 import CartCheckoutPage from './pages/CartCheckoutPage';
-import AuthModal from './components/AuthModal';
+import SubscriptionPage from './pages/SubscriptionPage';
+import ComplaintPage from './pages/ComplaintPage';
+import LoyaltyPage from './pages/LoyaltyPage';
 
-// ==============================
+import AuthModal from './components/AuthModal';
+import Footer from './components/Footer';
+
+// ======================================================
 // CẤU HÌNH VAI TRÒ
-// ==============================
+// ======================================================
 
 const ROLE_LABELS = {
-  customer: 'Khách Hàng',
-  farm_staff: 'Nông Trại',
-  sales: 'Sales',
-  admin: 'Admin'
+    customer: 'Khách hàng',
+    farm_staff: 'Nông trại',
+    sales: 'Sales',
+    admin: 'Admin',
 };
 
 const ROLE_DEFAULT_PAGE = {
-  customer: 'home',
-  farm_staff: 'farm_batches',
-  sales: 'sales_orders',
-  admin: 'fefo_dashboard'
+    customer: 'home',
+    farm_staff: 'farm_batches',
+    sales: 'sales_orders',
+    admin: 'fefo_dashboard',
 };
 
-// ==============================
+// ======================================================
+// LẤY VAI TRÒ TỪ TÀI KHOẢN ĐĂNG NHẬP
+// ======================================================
+
+const getUserRole = (user) => {
+    if (!user) return 'customer';
+
+    const rawRole =
+        user.role ??
+        user.role_name ??
+        user.user_type ??
+        (Array.isArray(user.roles) ? user.roles[0] : user.roles);
+
+    const role =
+        typeof rawRole === 'string'
+            ? rawRole.toLowerCase().trim()
+            : rawRole?.name?.toLowerCase?.().trim();
+
+    return ROLE_DEFAULT_PAGE[role] ? role : 'customer';
+};
+
+// ======================================================
 // MENU THEO TỪNG VAI TRÒ
-// ==============================
+// ======================================================
 
 const NAV_ITEMS = {
-  customer: [
-    { id: 'home', label: 'Trang chủ', icon: Sprout },
-    { id: 'story', label: 'Câu chuyện thương hiệu', icon: BookOpen },
-    { id: 'cart', label: 'Giỏ hàng & Đặt hàng', icon: ShoppingBag },
-    { id: 'qr', label: 'Truy xuất nguồn gốc', icon: QrCode }
-  ],
+    customer: [
+        {
+            id: 'home',
+            label: 'Trang chủ & Danh mục',
+            icon: Sprout,
+        },
+        {
+            id: 'story',
+            label: 'Câu chuyện thương hiệu',
+            icon: BookOpen,
+        },
+        {
+            id: 'qr',
+            label: 'Truy xuất nguồn gốc',
+            icon: QrCode,
+        },
+        {
+            id: 'cart',
+            label: 'Giỏ hàng & Đặt hàng',
+            icon: ShoppingBag,
+        },
+        {
+            id: 'subscription',
+            label: 'Gói nông sản định kỳ',
+            icon: RefreshCw,
+        },
+        {
+            id: 'complaint',
+            label: 'Gửi khiếu nại',
+            icon: AlertTriangle,
+        },
+        {
+            id: 'loyalty',
+            label: 'Điểm Loyalty',
+            icon: Award,
+        },
+    ],
 
-  farm_staff: [
-    { id: 'farm_batches', label: 'Quản lý lô hàng', icon: Package },
-    { id: 'farm_logs', label: 'Nhật ký canh tác', icon: ClipboardList }
-  ],
+    farm_staff: [
+        {
+            id: 'farm_batches',
+            label: 'Quản lý lô hàng',
+            icon: Package,
+        },
+        {
+            id: 'farm_logs',
+            label: 'Nhật ký canh tác',
+            icon: ClipboardList,
+        },
+    ],
 
-  sales: [
-    { id: 'sales_orders', label: 'Quản lý đơn hàng', icon: ShoppingBag },
-    { id: 'sales_complaints', label: 'Khiếu nại khách hàng', icon: AlertCircle }
-  ],
+    sales: [
+        {
+            id: 'sales_orders',
+            label: 'Quản lý đơn hàng',
+            icon: ShoppingBag,
+        },
+        {
+            id: 'sales_complaints',
+            label: 'Khiếu nại khách hàng',
+            icon: AlertCircle,
+        },
+    ],
 
-  admin: [
-    { id: 'fefo_dashboard', label: 'Quản lý tồn kho FEFO', icon: BarChart3 },
-    { id: 'admin_products', label: 'Danh mục sản phẩm', icon: ShoppingBag }
-  ]
+    admin: [
+        {
+            id: 'fefo_dashboard',
+            label: 'Quản lý tồn kho FEFO',
+            icon: BarChart3,
+        },
+        {
+            id: 'admin_products',
+            label: 'Danh mục sản phẩm',
+            icon: ShoppingBag,
+        },
+    ],
 };
 
-// ==============================
+// ======================================================
 // DASHBOARD FEFO
-// ==============================
+// ======================================================
 
 function FefoDashboard() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-      <h2 className="mb-2 text-2xl font-bold text-slate-800">
-        Bảng theo dõi hạn sử dụng kho FEFO
-      </h2>
+            <h2 className="mb-2 text-2xl font-bold text-slate-800">
+                Bảng theo dõi hạn sử dụng kho FEFO
+            </h2>
 
-      <p className="mb-4 text-sm text-slate-500">
-        Các lô có hạn sử dụng gần nhất được ưu tiên xuất trước.
-      </p>
+            <p className="mb-4 text-sm text-slate-500">
+                Các lô có hạn sử dụng gần nhất được ưu tiên xuất trước.
+            </p>
 
-      <div className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
-        Hệ thống FEFO đã sẵn sàng kết nối dữ liệu Lô hàng.
-      </div>
+            <div className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+                Hệ thống FEFO đã sẵn sàng kết nối dữ liệu lô hàng.
+            </div>
 
-    </div>
-  );
+        </div>
+    );
 }
 
-// ==============================
-// CÁC TRANG CHỨC NĂNG TẠM THỜI
-// ==============================
+// ======================================================
+// CÁC TRANG TẠM THỜI CHO NHÂN VIÊN / ADMIN
+// ======================================================
 
 function SimpleOperationsPage({ title, description }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-      <h2 className="text-2xl font-bold text-slate-800">
-        {title}
-      </h2>
+            <h2 className="text-2xl font-bold text-slate-800">
+                {title}
+            </h2>
 
-      <p className="mt-1 text-sm text-slate-500">
-        {description}
-      </p>
+            <p className="mt-1 text-sm text-slate-500">
+                {description}
+            </p>
 
-    </div>
-  );
+        </div>
+    );
 }
 
-// ==============================
-// COMPONENT APP CHÍNH
-// ==============================
+// ======================================================
+// APP CHÍNH
+// ======================================================
 
 export default function App() {
 
-  const [activeRole, setActiveRole] = useState('customer');
+    const [activePage, setActivePage] = useState('home');
 
-  const [activePage, setActivePage] = useState('home');
+    const [qrBatchCode, setQrBatchCode] = useState('');
 
-  const [qrBatchCode, setQrBatchCode] = useState(
-    'BATCH-CC-20261110'
-  );
+    const [authOpen, setAuthOpen] = useState(false);
 
-  const [authOpen, setAuthOpen] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
 
-  const [currentUser, setCurrentUser] = useState(null);
+    const [cartItems, setCartItems] = useState([]);
 
-  // ==============================
-  // GIỎ HÀNG
-  // Không có sản phẩm mẫu
-  // ==============================
+    const activeRole = getUserRole(currentUser);
 
-  const [cartItems, setCartItems] = useState([]);
+    // ==================================================
+    // THÊM SẢN PHẨM VÀO GIỎ HÀNG
+    // ==================================================
 
-  // ==============================
-  // THÊM SẢN PHẨM VÀO GIỎ HÀNG
-  // ==============================
+    const handleAddToCart = (product) => {
 
-  const addToCart = (product) => {
-
-    if (!product || !product.id) {
-      alert('Sản phẩm không hợp lệ!');
-      return;
-    }
-
-    setCartItems(prev => {
-
-      const existing = prev.find(
-        item => item.id === product.id
-      );
-
-      if (existing) {
-
-        const newQuantity = Number(existing.quantity) + 1;
-
-        if (
-          product.stock != null &&
-          newQuantity > Number(product.stock)
-        ) {
-          alert('Sản phẩm không đủ số lượng tồn kho!');
-          return prev;
+        if (!product || product.id == null) {
+            alert('Sản phẩm không hợp lệ!');
+            return;
         }
 
-        return prev.map(item =>
-          item.id === product.id
-            ? { ...item, quantity: newQuantity }
-            : item
+        setCartItems((previousItems) => {
+
+            const existingItem = previousItems.find(
+                (item) => String(item.id) === String(product.id)
+            );
+
+            const nextQuantity = existingItem
+                ? Number(existingItem.quantity || 0) + 1
+                : 1;
+
+            if (
+                product.stock != null &&
+                nextQuantity > Number(product.stock)
+            ) {
+                alert('Sản phẩm không đủ số lượng tồn kho!');
+                return previousItems;
+            }
+
+            if (
+                !existingItem &&
+                product.stock != null &&
+                Number(product.stock) <= 0
+            ) {
+                alert('Sản phẩm hiện đã hết hàng!');
+                return previousItems;
+            }
+
+            if (existingItem) {
+                return previousItems.map((item) =>
+                    String(item.id) === String(product.id)
+                        ? { ...item, quantity: nextQuantity }
+                        : item
+                );
+            }
+
+            return [
+                ...previousItems,
+                {
+                    ...product,
+                    quantity: 1,
+                },
+            ];
+        });
+    };
+    // ==================================================
+    // LẮNG NGHE SỰ KIỆN ĐIỀU HƯỚNG TỪ CÁC TRANG
+    // ==================================================
+
+    useEffect(() => {
+
+        const handleOrganicNavigate = (event) => {
+
+            const targetPage = event.detail?.page;
+
+            if (!targetPage) return;
+
+            setActivePage(targetPage);
+
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+
+        };
+
+        window.addEventListener(
+            'organic:navigate',
+            handleOrganicNavigate
         );
-      }
 
-      if (
-        product.stock != null &&
-        Number(product.stock) <= 0
-      ) {
-        alert('Sản phẩm hiện đã hết hàng!');
-        return prev;
-      }
+        return () => {
+            window.removeEventListener(
+                'organic:navigate',
+                handleOrganicNavigate
+            );
+        };
 
-      return [
-        ...prev,
-        {
-          ...product,
-          quantity: 1
+    }, []);
+
+    // ==================================================
+    // TỔNG SỐ SẢN PHẨM TRONG GIỎ
+    // ==================================================
+
+    const totalCartCount = cartItems.reduce(
+        (total, item) => total + Number(item.quantity || 0),
+        0
+    );
+
+    // ==================================================
+    // ĐỌC MÃ LÔ TỪ URL QR
+    // ==================================================
+
+    useEffect(() => {
+
+        const path = window.location.pathname;
+
+        const prefix = '/traceability/';
+
+        if (path.startsWith(prefix)) {
+
+            const codeFromUrl = path.slice(prefix.length).split('/')[0];
+
+            if (codeFromUrl) {
+                try {
+                    const decodedCode = decodeURIComponent(codeFromUrl);
+
+                    setQrBatchCode(decodedCode);
+                    setActivePage('qr');
+
+                } catch (error) {
+                    console.error('Không thể đọc mã QR:', error);
+                }
+            }
         }
-      ];
-    });
 
-    alert(`Đã thêm ${product.name} vào giỏ hàng!`);
-  };
+    }, []);
 
-  // ==============================
-  // ĐỌC MÃ LÔ TỪ URL QR
-  // Ví dụ:
-  // /traceability/BATCH-CC-20261110
-  // ==============================
+    // ==================================================
+    // ĐĂNG NHẬP THÀNH CÔNG
+    // ==================================================
 
-  useEffect(() => {
+    const handleLoginSuccess = (user) => {
 
-    const path = window.location.pathname;
+        setCurrentUser(user);
 
-    const prefix = '/traceability/';
+        const role = getUserRole(user);
 
-    if (path.startsWith(prefix)) {
+        setActivePage(ROLE_DEFAULT_PAGE[role]);
 
-      const codeFromUrl = path.slice(prefix.length);
+        setAuthOpen(false);
+    };
 
-      if (codeFromUrl) {
+    // ==================================================
+    // ĐĂNG XUẤT
+    // ==================================================
 
-        try {
+    const handleLogout = () => {
 
-          const decodedCode = decodeURIComponent(
-            codeFromUrl.split('/')[0]
-          );
+        setCurrentUser(null);
 
-          setQrBatchCode(decodedCode);
+        setActivePage('home');
+    };
 
-          setActiveRole('customer');
+    // ==================================================
+    // ĐIỀU HƯỚNG TRANG QR
+    // ==================================================
 
-          setActivePage('qr');
+    const handleNavigateQr = (batchCode) => {
 
-        } catch (error) {
-
-          console.error('Không thể đọc mã QR:', error);
-
+        if (batchCode) {
+            setQrBatchCode(String(batchCode));
         }
-      }
-    }
 
-  }, []);
+        setActivePage('qr');
+    };
 
-  // ==============================
-  // CHUYỂN ĐỔI VAI TRÒ
-  // ==============================
+    // ==================================================
+    // HIỂN THỊ TRANG KHÁCH HÀNG
+    // ==================================================
 
-  const changeRole = (role) => {
+    const renderCustomerPage = () => {
 
-    if (!ROLE_DEFAULT_PAGE[role]) return;
+        switch (activePage) {
 
-    setActiveRole(role);
+            case 'home':
+                return (
+                    <HomePage
+                        onAddToCart={handleAddToCart}
+                        addToCart={handleAddToCart}
+                        cartItems={cartItems}
+                        onNavigateQr={handleNavigateQr}
+                    />
+                );
 
-    setActivePage(ROLE_DEFAULT_PAGE[role]);
+            case 'story':
+                return <BrandStory />;
 
-  };
+            case 'qr':
+                return (
+                    <TraceabilityPage
+                        initialBatchCode={qrBatchCode}
+                        batchCode={qrBatchCode}
+                    />
+                );
 
-  // ==============================
-  // ĐĂNG XUẤT
-  // ==============================
+            case 'cart':
+                return (
+                    <CartCheckoutPage
+                        cartItems={cartItems}
+                        setCartItems={setCartItems}
+                    />
+                );
 
-  const handleLogout = () => {
+            case 'subscription':
+                return <SubscriptionPage />;
 
-    setCurrentUser(null);
+            case 'complaint':
+                return <ComplaintPage />;
 
-  };
+            case 'loyalty':
+                return <LoyaltyPage />;
 
-  // ==============================
-  // ĐĂNG NHẬP THÀNH CÔNG
-  // ==============================
+            default:
+                return (
+                    <HomePage
+                        onAddToCart={handleAddToCart}
+                        addToCart={handleAddToCart}
+                        cartItems={cartItems}
+                        onNavigateQr={handleNavigateQr}
+                    />
+                );
+        }
+    };
 
-  const handleLoginSuccess = (user) => {
+    // ==================================================
+    // HIỂN THỊ TRANG NHÂN VIÊN / ADMIN
+    // ==================================================
 
-    setCurrentUser(user);
+    const renderStaffPage = () => {
 
-    setAuthOpen(false);
+        if (activeRole === 'farm_staff') {
 
-  };
+            switch (activePage) {
 
-  // ==============================
-  // HIỂN THỊ TRANG THEO VAI TRÒ
-  // ==============================
+                case 'farm_logs':
+                    return (
+                        <SimpleOperationsPage
+                            title="Nhật ký canh tác"
+                            description="Giao diện dành cho nhân viên nông trại cập nhật các mốc tưới nước, bón phân và chăm sóc cây trồng."
+                        />
+                    );
 
-  const renderPage = () => {
+                case 'farm_batches':
+                default:
+                    return (
+                        <SimpleOperationsPage
+                            title="Quản lý lô hàng"
+                            description="Giao diện khởi tạo lô hàng và sinh mã QR tem in bao bì."
+                        />
+                    );
+            }
+        }
 
-    // KHÁCH HÀNG
-    if (activeRole === 'customer') {
+        if (activeRole === 'sales') {
 
-      switch (activePage) {
+            switch (activePage) {
 
-        // TRANG CHỦ
-        case 'home':
-          return (
-            <HomePage
-              addToCart={addToCart}
-              cartItems={cartItems}
-            />
-          );
+                case 'sales_complaints':
+                    return (
+                        <SimpleOperationsPage
+                            title="Khiếu nại khách hàng"
+                            description="Quản lý và xử lý các khiếu nại của khách hàng."
+                        />
+                    );
 
-        // CÂU CHUYỆN THƯƠNG HIỆU
-        case 'story':
-          return <BrandStory />;
+                case 'sales_orders':
+                default:
+                    return (
+                        <SimpleOperationsPage
+                            title="Quản lý đơn hàng"
+                            description="Giao diện duyệt đơn hàng và theo dõi trạng thái giao hàng."
+                        />
+                    );
+            }
+        }
 
-        // GIỎ HÀNG VÀ THANH TOÁN
-        case 'cart':
-          return (
-            <CartCheckoutPage
-              cartItems={cartItems}
-              setCartItems={setCartItems}
-            />
-          );
+        if (activeRole === 'admin') {
 
-        // TRUY XUẤT NGUỒN GỐC
-        case 'qr':
-          return (
-            <TraceabilityPage
-              initialBatchCode={qrBatchCode}
-            />
-          );
+            switch (activePage) {
 
-        default:
-          return (
-            <HomePage
-              addToCart={addToCart}
-              cartItems={cartItems}
-            />
-          );
-      }
-    }
+                case 'admin_products':
+                    return (
+                        <SimpleOperationsPage
+                            title="Danh mục sản phẩm"
+                            description="Quản lý danh mục sản phẩm nông sản hữu cơ."
+                        />
+                    );
 
-    // ==============================
-    // NHÂN VIÊN NÔNG TRẠI
-    // ==============================
+                case 'fefo_dashboard':
+                default:
+                    return <FefoDashboard />;
+            }
+        }
 
-    if (activeRole === 'farm_staff') {
+        return null;
+    };
 
-      switch (activePage) {
+    // ==================================================
+    // MENU THEO VAI TRÒ
+    // ==================================================
 
-        case 'farm_logs':
-          return (
-            <SimpleOperationsPage
-              title="Nhật ký canh tác"
-              description="Giao diện dành cho nhân viên nông trại cập nhật các mốc tưới nước, bón phân và chăm sóc cây trồng."
-            />
-          );
+    const navItems = NAV_ITEMS[activeRole] || NAV_ITEMS.customer;
 
-        case 'farm_batches':
-        default:
-          return (
-            <SimpleOperationsPage
-              title="Quản lý lô hàng"
-              description="Giao diện khởi tạo lô hàng và sinh mã QR tem in bao bì."
-            />
-          );
-      }
-    }
-
-    // ==============================
-    // NHÂN VIÊN SALES
-    // ==============================
-
-    if (activeRole === 'sales') {
-
-      switch (activePage) {
-
-        case 'sales_complaints':
-          return (
-            <SimpleOperationsPage
-              title="Khiếu nại khách hàng"
-              description="Quản lý và xử lý các khiếu nại của khách hàng."
-            />
-          );
-
-        case 'sales_orders':
-        default:
-          return (
-            <SimpleOperationsPage
-              title="Quản lý đơn hàng"
-              description="Giao diện duyệt đơn hàng và theo dõi trạng thái giao hàng."
-            />
-          );
-      }
-    }
-
-    // ==============================
-    // ADMIN
-    // ==============================
-
-    if (activeRole === 'admin') {
-
-      switch (activePage) {
-
-        case 'admin_products':
-          return (
-            <SimpleOperationsPage
-              title="Danh mục sản phẩm"
-              description="Quản lý danh mục sản phẩm nông sản hữu cơ."
-            />
-          );
-
-        case 'fefo_dashboard':
-        default:
-          return <FefoDashboard />;
-      }
-    }
+    // ==================================================
+    // GIAO DIỆN CHÍNH
+    // ==================================================
 
     return (
-      <HomePage
-        addToCart={addToCart}
-      />
-    );
-  };
 
-  // ==============================
-  // MENU HIỆN TẠI
-  // ==============================
+        <div className="flex min-h-screen flex-col bg-slate-50 font-sans">
 
-  const navItems =
-    NAV_ITEMS[activeRole] || NAV_ITEMS.customer;
+            {/* HEADER */}
 
-  // ==============================
-  // GIAO DIỆN CHÍNH
-  // ==============================
+            <header className="sticky top-0 z-30 bg-emerald-800 text-white shadow-md">
 
-  return (
+                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
 
-    <div className="min-h-screen bg-slate-50">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setActivePage(ROLE_DEFAULT_PAGE[activeRole]);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="flex items-center gap-3 text-left"
+                    >
 
-      {/* HEADER */}
+                        <span className="rounded-xl bg-emerald-600 p-2">
+                            <Sprout size={25} />
+                        </span>
 
-      <header className="sticky top-0 z-30 bg-emerald-800 text-white shadow-md">
+                        <span>
+                            <span className="block text-lg font-extrabold leading-tight">
+                                Organic Farm Ecommerce
+                            </span>
 
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <span className="block text-xs text-emerald-100">
+                                Từ nông trại đến bàn ăn
+                            </span>
+                        </span>
 
-          {/* LOGO */}
+                    </button>
 
-          <button
-            onClick={() => changeRole('customer')}
-            className="flex items-center gap-3 text-left"
-          >
+                    {/* TÀI KHOẢN */}
 
-            <span className="rounded-xl bg-emerald-600 p-2">
-              <Sprout size={25} />
-            </span>
+                    <div className="flex items-center gap-3">
 
-            <span>
-              <span className="block text-lg font-extrabold leading-tight">
-                Organic Farm Ecommerce
-              </span>
+                        {currentUser ? (
+                            <>
 
-              <span className="block text-xs text-emerald-100">
-                Từ nông trại đến bàn ăn
-              </span>
-            </span>
+                                <span className="hidden items-center gap-2 text-sm text-emerald-100 sm:flex">
+                                    <UserCircle size={18} />
+                                    {currentUser.name ||
+                                        currentUser.email ||
+                                        'Tài khoản'}
+                                </span>
 
-          </button>
+                                <span className="hidden rounded-lg bg-emerald-900 px-3 py-2 text-xs font-semibold text-emerald-200 sm:block">
+                                    {ROLE_LABELS[activeRole]}
+                                </span>
 
-          {/* CHỌN VAI TRÒ DEMO */}
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="flex items-center gap-2 rounded-lg border border-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 sm:text-sm"
+                                >
+                                    <LogOut size={16} />
+                                    Đăng xuất
+                                </button>
 
-          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-emerald-700 bg-emerald-950/50 p-1">
+                            </>
+                        ) : (
 
-            <span className="px-2 text-xs text-emerald-200">
-              Vai trò demo:
-            </span>
+                            <button
+                                type="button"
+                                onClick={() => setAuthOpen(true)}
+                                className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
+                            >
+                                <LogIn size={17} />
+                                Đăng nhập
+                            </button>
 
-            {Object.entries(ROLE_LABELS).map(
-              ([role, label]) => (
+                        )}
 
-                <button
-                  key={role}
-                  onClick={() => changeRole(role)}
-                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                    activeRole === role
-                      ? 'bg-emerald-500 text-white'
-                      : 'text-emerald-100 hover:bg-emerald-800'
-                  }`}
-                >
-                  {label}
-                </button>
+                    </div>
 
-              )
+                </div>
+
+            </header>
+
+            {/* ==================================================
+                KHÁCH HÀNG
+            ================================================== */}
+
+            {activeRole === 'customer' ? (
+
+                <>
+
+                    {/* MENU KHÁCH HÀNG */}
+
+                    <nav className="border-b border-emerald-100 bg-white shadow-sm">
+
+                        <div className="mx-auto flex max-w-7xl flex-wrap items-center px-4 py-3">
+
+                            <div className="flex flex-wrap gap-1">
+
+                                {navItems.map(({ id, label, icon: Icon }) => (
+
+                                    <button
+                                        type="button"
+                                        key={id}
+                                        onClick={() => {
+                                            setActivePage(id);
+                                            window.scrollTo({
+                                                top: 0,
+                                                behavior: 'smooth'
+                                            });
+                                        }}
+                                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${
+                                            activePage === id
+                                                ? 'bg-emerald-50 font-bold text-emerald-700'
+                                                : 'text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                    >
+
+                                        <Icon size={17} />
+
+                                        {label}
+
+                                        {id === 'cart' && totalCartCount > 0 && (
+                                            <span className="ml-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs text-white">
+                                                {totalCartCount}
+                                            </span>
+                                        )}
+
+                                    </button>
+
+                                ))}
+
+                            </div>
+
+                        </div>
+
+                    </nav>
+
+                    {/* NỘI DUNG KHÁCH HÀNG */}
+
+                    <main className="w-full flex-1">
+
+                        {renderCustomerPage()}
+
+                    </main>
+
+                </>
+
+            ) : (
+
+                /* ==================================================
+                   NHÂN VIÊN VÀ ADMIN
+                ================================================== */
+
+                <main className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 content-start gap-6 px-4 py-6 md:grid-cols-4">
+
+                    {/* SIDEBAR */}
+
+                    <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+
+                        <h2 className="mb-4 px-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                            Menu {ROLE_LABELS[activeRole]}
+                        </h2>
+
+                        <nav className="space-y-1">
+
+                            {navItems.map(({ id, label, icon: Icon }) => (
+
+                                <button
+                                    type="button"
+                                    key={id}
+                                    onClick={() => {
+                                        setActivePage(id);
+                                        window.scrollTo({
+                                            top: 0,
+                                            behavior: 'smooth'
+                                        });
+                                    }}
+                                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
+                                        activePage === id
+                                            ? 'bg-emerald-50 font-bold text-emerald-700'
+                                            : 'text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                >
+
+                                    <Icon size={18} />
+
+                                    {label}
+
+                                </button>
+
+                            ))}
+
+                        </nav>
+
+                    </aside>
+
+                    {/* NỘI DUNG NHÂN VIÊN / ADMIN */}
+
+                    <section className="min-w-0 md:col-span-3">
+
+                        {renderStaffPage()}
+
+                    </section>
+
+                </main>
+
             )}
 
-          </div>
+            {/* FOOTER DÙNG CHUNG TOÀN WEBSITE */}
+
+            <Footer />
+
+            {/* MODAL ĐĂNG NHẬP */}
+
+            <AuthModal
+                isOpen={authOpen}
+                onClose={() => setAuthOpen(false)}
+                onLoginSuccess={handleLoginSuccess}
+            />
 
         </div>
 
-      </header>
-
-      {/* NAVIGATION KHÁCH HÀNG */}
-
-      {activeRole === 'customer' ? (
-
-        <>
-
-          <nav className="border-b border-emerald-100 bg-white">
-
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-
-              {/* MENU */}
-
-              <div className="flex flex-wrap gap-1">
-
-                {navItems.map(
-                  ({ id, label, icon: Icon }) => (
-
-                    <button
-                      key={id}
-                      onClick={() => setActivePage(id)}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                        activePage === id
-                          ? 'bg-emerald-50 font-bold text-emerald-700'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-
-                      <Icon size={17} />
-
-                      {label}
-
-                      {id === 'cart' && cartItems.length > 0 && (
-                        <span className="ml-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs text-white">
-                          {cartItems.reduce(
-                            (sum, item) => sum + item.quantity,
-                            0
-                          )}
-                        </span>
-                      )}
-
-                    </button>
-
-                  )
-                )}
-
-              </div>
-
-              {/* TÀI KHOẢN */}
-
-              <div className="flex items-center gap-3">
-
-                {currentUser ? (
-
-                  <>
-
-                    <span className="hidden text-sm text-slate-600 sm:inline">
-
-                      <UserCircle
-                        className="mr-1 inline"
-                        size={17}
-                      />
-
-                      {currentUser.name || currentUser.email || 'Tài khoản'}
-
-                    </span>
-
-                    <button
-                      onClick={handleLogout}
-                      className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                    >
-
-                      <LogOut size={16} />
-
-                      Đăng xuất
-
-                    </button>
-
-                  </>
-
-                ) : (
-
-                  <button
-                    onClick={() => setAuthOpen(true)}
-                    className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                  >
-
-                    <LogIn size={16} />
-
-                    Đăng nhập
-
-                  </button>
-
-                )}
-
-              </div>
-
-            </div>
-
-          </nav>
-
-          {/* NỘI DUNG KHÁCH HÀNG */}
-
-          <main className="min-h-[70vh] py-6">
-            {renderPage()}
-          </main>
-
-        </>
-
-      ) : (
-
-        /* GIAO DIỆN NHÂN VIÊN VÀ ADMIN */
-
-        <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-4">
-
-          {/* SIDEBAR */}
-
-          <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-
-            <h2 className="mb-4 px-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Menu {ROLE_LABELS[activeRole]}
-            </h2>
-
-            <nav className="space-y-1">
-
-              {navItems.map(
-                ({ id, label, icon: Icon }) => (
-
-                  <button
-                    key={id}
-                    onClick={() => setActivePage(id)}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium ${
-                      activePage === id
-                        ? 'bg-emerald-50 font-bold text-emerald-700'
-                        : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-
-                    <Icon size={18} />
-
-                    {label}
-
-                  </button>
-
-                )
-              )}
-
-            </nav>
-
-          </aside>
-
-          {/* NỘI DUNG */}
-
-          <section className="min-w-0 md:col-span-3">
-            {renderPage()}
-          </section>
-
-        </main>
-
-      )}
-
-      {/* FOOTER */}
-
-      <footer className="border-t border-slate-200 bg-white px-4 py-6 text-center text-xs text-slate-500">
-
-        © {new Date().getFullYear()} Organic Farm Ecommerce
-
-        · Nông sản sạch minh bạch nguồn gốc
-
-      </footer>
-
-      {/* MODAL ĐĂNG NHẬP */}
-
-      <AuthModal
-        isOpen={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onLoginSuccess={handleLoginSuccess}
-      />
-
-    </div>
-  );
+    );
 }
