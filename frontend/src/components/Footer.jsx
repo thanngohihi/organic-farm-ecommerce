@@ -43,7 +43,7 @@ export default function Footer() {
 
                     <div className="mt-5 flex gap-3">
                         <a
-                            href="#"
+                            href="https://www.facebook.com/profile.php?id=61590644424019"
                             aria-label="Facebook"
                             className="flex h-10 w-10 items-center justify-center rounded-full bg-green-800 hover:bg-green-600"
                         >
