@@ -1,4 +1,8 @@
-
+import FarmBatchesPage from './pages/dashboard/FarmBatchesPage';
+import FarmingLogsPage from './pages/dashboard/FarmingLogsPage';
+import SalesOrdersPage from './pages/dashboard/SalesOrdersPage';
+import SalesComplaintsPage from './pages/dashboard/SalesComplaintsPage';
+import AdminStatsPage from './pages/dashboard/AdminStatsPage';
 import React, { useEffect, useState } from 'react';
 
 import {
@@ -443,73 +447,38 @@ export default function App() {
     // ==================================================
 
     const renderStaffPage = () => {
-
-        if (activeRole === 'farm_staff') {
-
-            switch (activePage) {
-
-                case 'farm_logs':
-                    return (
-                        <SimpleOperationsPage
-                            title="Nhật ký canh tác"
-                            description="Giao diện dành cho nhân viên nông trại cập nhật các mốc tưới nước, bón phân và chăm sóc cây trồng."
-                        />
-                    );
-
-                case 'farm_batches':
-                default:
-                    return (
-                        <SimpleOperationsPage
-                            title="Quản lý lô hàng"
-                            description="Giao diện khởi tạo lô hàng và sinh mã QR tem in bao bì."
-                        />
-                    );
-            }
+    if (activeRole === 'farm_staff') {
+        switch (activePage) {
+            case 'farm_logs':
+                return <FarmingLogsPage />;
+            case 'farm_batches':
+            default:
+                return <FarmBatchesPage />;
         }
+    }
 
-        if (activeRole === 'sales') {
-
-            switch (activePage) {
-
-                case 'sales_complaints':
-                    return (
-                        <SimpleOperationsPage
-                            title="Khiếu nại khách hàng"
-                            description="Quản lý và xử lý các khiếu nại của khách hàng."
-                        />
-                    );
-
-                case 'sales_orders':
-                default:
-                    return (
-                        <SimpleOperationsPage
-                            title="Quản lý đơn hàng"
-                            description="Giao diện duyệt đơn hàng và theo dõi trạng thái giao hàng."
-                        />
-                    );
-            }
+    if (activeRole === 'sales') {
+        switch (activePage) {
+            case 'sales_complaints':
+                return <SalesComplaintsPage />;
+            case 'sales_orders':
+            default:
+                return <SalesOrdersPage />;
         }
+    }
 
-        if (activeRole === 'admin') {
-
-            switch (activePage) {
-
-                case 'admin_products':
-                    return (
-                        <SimpleOperationsPage
-                            title="Danh mục sản phẩm"
-                            description="Quản lý danh mục sản phẩm nông sản hữu cơ."
-                        />
-                    );
-
-                case 'fefo_dashboard':
-                default:
-                    return <FefoDashboard />;
-            }
+    if (activeRole === 'admin') {
+        switch (activePage) {
+            case 'admin_products':
+                return <FarmBatchesPage />; // Admin có thể xem và quản lý luôn kho lô hàng
+            case 'fefo_dashboard':
+            default:
+                return <AdminStatsPage />;
         }
+    }
 
-        return null;
-    };
+    return null;
+};
 
     // ==================================================
     // MENU THEO VAI TRÒ
