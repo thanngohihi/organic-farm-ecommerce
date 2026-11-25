@@ -51,6 +51,13 @@ const ROLE_DEFAULT_PAGE = {
     admin: 'fefo_dashboard',
 };
 
+const LOGIN_REQUIRED_MESSAGES = {
+    cart: 'Bạn cần đăng nhập trước khi xem giỏ hàng hoặc tiến hành thanh toán.',
+    subscription: 'Vui lòng đăng nhập để đăng ký gói nông sản định kỳ.',
+    complaint: 'Bạn cần đăng nhập để gửi khiếu nại và theo dõi yêu cầu.',
+    loyalty: 'Đăng nhập để xem điểm thưởng Loyalty của bạn.',
+};
+
 // ======================================================
 // LẤY VAI TRÒ TỪ TÀI KHOẢN ĐĂNG NHẬP
 // ======================================================
@@ -156,55 +163,12 @@ const NAV_ITEMS = {
 };
 
 // ======================================================
-// DASHBOARD FEFO
-// ======================================================
-
-function FefoDashboard() {
-    return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-            <h2 className="mb-2 text-2xl font-bold text-slate-800">
-                Bảng theo dõi hạn sử dụng kho FEFO
-            </h2>
-
-            <p className="mb-4 text-sm text-slate-500">
-                Các lô có hạn sử dụng gần nhất được ưu tiên xuất trước.
-            </p>
-
-            <div className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
-                Hệ thống FEFO đã sẵn sàng kết nối dữ liệu lô hàng.
-            </div>
-
-        </div>
-    );
-}
-
-// ======================================================
-// CÁC TRANG TẠM THỜI CHO NHÂN VIÊN / ADMIN
-// ======================================================
-
-function SimpleOperationsPage({ title, description }) {
-    return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-            <h2 className="text-2xl font-bold text-slate-800">
-                {title}
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-                {description}
-            </p>
-
-        </div>
-    );
-}
-
-// ======================================================
 // APP CHÍNH
 // ======================================================
 
 export default function App() {
 
+    // MẶC ĐỊNH LUÔN BẮT ĐẦU TỪ TRANG CHỦ
     const [activePage, setActivePage] = useState('home');
 
     const [qrBatchCode, setQrBatchCode] = useState('');
@@ -212,16 +176,49 @@ export default function App() {
     const [authOpen, setAuthOpen] = useState(false);
 
     const [currentUser, setCurrentUser] = useState(null);
+    const [loginNotice, setLoginNotice] = useState(null);
+    const [pendingPage, setPendingPage] = useState(null);
 
     const [cartItems, setCartItems] = useState([]);
 
     const activeRole = getUserRole(currentUser);
 
     // ==================================================
+    // ĐIỀU HƯỚNG TRANG
+    // ==================================================
+
+    const requireLogin = (message, targetPage = null) => {
+        setLoginNotice(message);
+        setPendingPage(targetPage);
+    };
+
+    const navigatePage = (page) => {
+        if (LOGIN_REQUIRED_MESSAGES[page] && !currentUser) {
+            requireLogin(LOGIN_REQUIRED_MESSAGES[page], page);
+            return;
+        }
+
+        setActivePage(page);
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth',
+        });
+    };
+
+    // ==================================================
     // THÊM SẢN PHẨM VÀO GIỎ HÀNG
     // ==================================================
 
     const handleAddToCart = (product) => {
+
+        if (!currentUser) {
+            requireLogin(
+                'Bạn cần đăng nhập để mua hàng và thêm sản phẩm vào giỏ.',
+                'cart'
+            );
+            return;
+        }
 
         if (!product || product.id == null) {
             alert('Sản phẩm không hợp lệ!');
@@ -238,29 +235,30 @@ export default function App() {
                 ? Number(existingItem.quantity || 0) + 1
                 : 1;
 
-            if (
-                product.stock != null &&
-                nextQuantity > Number(product.stock)
-            ) {
+            const stock = Number(
+                product.stock ??
+                product.current_quantity ??
+                0
+            );
+
+            if (nextQuantity > stock) {
                 alert('Sản phẩm không đủ số lượng tồn kho!');
                 return previousItems;
             }
 
-            if (
-                !existingItem &&
-                product.stock != null &&
-                Number(product.stock) <= 0
-            ) {
+            if (stock <= 0) {
                 alert('Sản phẩm hiện đã hết hàng!');
                 return previousItems;
             }
 
             if (existingItem) {
+
                 return previousItems.map((item) =>
                     String(item.id) === String(product.id)
                         ? { ...item, quantity: nextQuantity }
                         : item
                 );
+
             }
 
             return [
@@ -270,8 +268,31 @@ export default function App() {
                     quantity: 1,
                 },
             ];
+
         });
+
     };
+
+    // ==================================================
+    // ĐI ĐẾN GIỎ HÀNG
+    // ==================================================
+
+    const handleGoToCart = () => {
+
+        if (!currentUser) {
+
+            requireLogin(
+                'Bạn cần đăng nhập trước khi xem giỏ hàng hoặc tiến hành thanh toán.',
+                'cart'
+            );
+
+            return;
+        }
+
+        navigatePage('cart');
+
+    };
+
     // ==================================================
     // LẮNG NGHE SỰ KIỆN ĐIỀU HƯỚNG TỪ CÁC TRANG
     // ==================================================
@@ -284,12 +305,7 @@ export default function App() {
 
             if (!targetPage) return;
 
-            setActivePage(targetPage);
-
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
+            navigatePage(targetPage);
 
         };
 
@@ -305,6 +321,31 @@ export default function App() {
             );
         };
 
+    }, [currentUser]);
+
+    // ==================================================
+    // ĐỌC MÃ LÔ TỪ URL QR (/traceability/:batchCode)
+    // ==================================================
+
+    useEffect(() => {
+
+        const path = window.location.pathname;
+        const prefix = '/traceability/';
+
+        if (path.startsWith(prefix)) {
+            const codeFromUrl = path.slice(prefix.length).split('/')[0];
+
+            if (codeFromUrl) {
+                try {
+                    const decodedCode = decodeURIComponent(codeFromUrl);
+                    setQrBatchCode(decodedCode);
+                    setActivePage('qr');
+                } catch (error) {
+                    console.error('Không thể đọc mã QR:', error);
+                }
+            }
+        }
+
     }, []);
 
     // ==================================================
@@ -317,35 +358,6 @@ export default function App() {
     );
 
     // ==================================================
-    // ĐỌC MÃ LÔ TỪ URL QR
-    // ==================================================
-
-    useEffect(() => {
-
-        const path = window.location.pathname;
-
-        const prefix = '/traceability/';
-
-        if (path.startsWith(prefix)) {
-
-            const codeFromUrl = path.slice(prefix.length).split('/')[0];
-
-            if (codeFromUrl) {
-                try {
-                    const decodedCode = decodeURIComponent(codeFromUrl);
-
-                    setQrBatchCode(decodedCode);
-                    setActivePage('qr');
-
-                } catch (error) {
-                    console.error('Không thể đọc mã QR:', error);
-                }
-            }
-        }
-
-    }, []);
-
-    // ==================================================
     // ĐĂNG NHẬP THÀNH CÔNG
     // ==================================================
 
@@ -355,9 +367,16 @@ export default function App() {
 
         const role = getUserRole(user);
 
-        setActivePage(ROLE_DEFAULT_PAGE[role]);
+        setActivePage(
+            role === 'customer' && pendingPage
+                ? pendingPage
+                : ROLE_DEFAULT_PAGE[role]
+        );
 
         setAuthOpen(false);
+        setLoginNotice(null);
+        setPendingPage(null);
+
     };
 
     // ==================================================
@@ -366,9 +385,23 @@ export default function App() {
 
     const handleLogout = () => {
 
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user_token');
+
         setCurrentUser(null);
+        setCartItems([]);
+        setLoginNotice(null);
+        setPendingPage(null);
+        setQrBatchCode('');
 
         setActivePage('home');
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth',
+        });
+
     };
 
     // ==================================================
@@ -377,16 +410,55 @@ export default function App() {
 
     const handleNavigateQr = (batchCode) => {
 
-        if (batchCode) {
-            setQrBatchCode(String(batchCode));
+        if (!batchCode) {
+            alert('Không tìm thấy mã lô sản phẩm!');
+            return;
         }
 
-        setActivePage('qr');
+        setQrBatchCode(String(batchCode));
+
+        navigatePage('qr');
+
+    };
+
+    // ==================================================
+    // ĐIỀU HƯỚNG TRANG CHỦ
+    // ==================================================
+
+    const handleGoHome = () => {
+
+        setQrBatchCode('');
+
+        navigatePage('home');
+
     };
 
     // ==================================================
     // HIỂN THỊ TRANG KHÁCH HÀNG
     // ==================================================
+
+    const renderLoginRequiredFallback = (page) => (
+        <div className="mx-auto my-12 max-w-md rounded-3xl border border-emerald-100 bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                <AlertCircle size={28} />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800">Bạn cần đăng nhập</h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                {LOGIN_REQUIRED_MESSAGES[page] || 'Vui lòng đăng nhập để tiếp tục.'}
+            </p>
+            <button
+                type="button"
+                onClick={() => {
+                    setPendingPage(page);
+                    setAuthOpen(true);
+                }}
+                className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-semibold text-white transition hover:bg-emerald-700"
+            >
+                <LogIn size={18} />
+                Đăng nhập ngay
+            </button>
+        </div>
+    );
 
     const renderCustomerPage = () => {
 
@@ -395,10 +467,10 @@ export default function App() {
             case 'home':
                 return (
                     <HomePage
-                        onAddToCart={handleAddToCart}
                         addToCart={handleAddToCart}
                         cartItems={cartItems}
                         onNavigateQr={handleNavigateQr}
+                        onGoToCart={handleGoToCart}
                     />
                 );
 
@@ -414,6 +486,11 @@ export default function App() {
                 );
 
             case 'cart':
+
+                if (!currentUser) {
+                    return renderLoginRequiredFallback('cart');
+                }
+
                 return (
                     <CartCheckoutPage
                         cartItems={cartItems}
@@ -422,24 +499,41 @@ export default function App() {
                 );
 
             case 'subscription':
+
+                if (!currentUser) {
+                    return renderLoginRequiredFallback('subscription');
+                }
+
                 return <SubscriptionPage />;
 
             case 'complaint':
+
+                if (!currentUser) {
+                    return renderLoginRequiredFallback('complaint');
+                }
+
                 return <ComplaintPage />;
 
             case 'loyalty':
+
+                if (!currentUser) {
+                    return renderLoginRequiredFallback('loyalty');
+                }
+
                 return <LoyaltyPage />;
 
             default:
                 return (
                     <HomePage
-                        onAddToCart={handleAddToCart}
                         addToCart={handleAddToCart}
                         cartItems={cartItems}
                         onNavigateQr={handleNavigateQr}
+                        onGoToCart={handleGoToCart}
                     />
                 );
+
         }
+
     };
 
     // ==================================================
@@ -447,38 +541,40 @@ export default function App() {
     // ==================================================
 
     const renderStaffPage = () => {
-    if (activeRole === 'farm_staff') {
-        switch (activePage) {
-            case 'farm_logs':
-                return <FarmingLogsPage />;
-            case 'farm_batches':
-            default:
-                return <FarmBatchesPage />;
-        }
-    }
 
-    if (activeRole === 'sales') {
-        switch (activePage) {
-            case 'sales_complaints':
-                return <SalesComplaintsPage />;
-            case 'sales_orders':
-            default:
-                return <SalesOrdersPage />;
+        if (activeRole === 'farm_staff') {
+            switch (activePage) {
+                case 'farm_logs':
+                    return <FarmingLogsPage />;
+                case 'farm_batches':
+                default:
+                    return <FarmBatchesPage />;
+            }
         }
-    }
 
-    if (activeRole === 'admin') {
-        switch (activePage) {
-            case 'admin_products':
-                return <FarmBatchesPage />; // Admin có thể xem và quản lý luôn kho lô hàng
-            case 'fefo_dashboard':
-            default:
-                return <AdminStatsPage />;
+        if (activeRole === 'sales') {
+            switch (activePage) {
+                case 'sales_complaints':
+                    return <SalesComplaintsPage />;
+                case 'sales_orders':
+                default:
+                    return <SalesOrdersPage />;
+            }
         }
-    }
 
-    return null;
-};
+        if (activeRole === 'admin') {
+            switch (activePage) {
+                case 'admin_products':
+                    return <FarmBatchesPage />; // Admin có thể xem và quản lý luôn kho lô hàng
+                case 'fefo_dashboard':
+                default:
+                    return <AdminStatsPage />;
+            }
+        }
+
+        return null;
+
+    };
 
     // ==================================================
     // MENU THEO VAI TRÒ
@@ -500,12 +596,11 @@ export default function App() {
 
                 <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
 
+                    {/* LOGO - QUAY VỀ TRANG CHỦ */}
+
                     <button
                         type="button"
-                        onClick={() => {
-                            setActivePage(ROLE_DEFAULT_PAGE[activeRole]);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
+                        onClick={handleGoHome}
                         className="flex items-center gap-3 text-left"
                     >
 
@@ -533,10 +628,28 @@ export default function App() {
                             <>
 
                                 <span className="hidden items-center gap-2 text-sm text-emerald-100 sm:flex">
+
                                     <UserCircle size={18} />
-                                    {currentUser.name ||
+
+                                    {currentUser.full_name ||
+                                        currentUser.name ||
                                         currentUser.email ||
                                         'Tài khoản'}
+
+                                    <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-200">
+
+                                        <Award size={14} />
+
+                                        {Number(
+                                            currentUser.loyalty_points ??
+                                            currentUser.loyaltyPoints ??
+                                            currentUser.points ??
+                                            currentUser.loyalty?.points ??
+                                            0
+                                        ).toLocaleString('vi-VN')} điểm
+
+                                    </span>
+
                                 </span>
 
                                 <span className="hidden rounded-lg bg-emerald-900 px-3 py-2 text-xs font-semibold text-emerald-200 sm:block">
@@ -548,11 +661,15 @@ export default function App() {
                                     onClick={handleLogout}
                                     className="flex items-center gap-2 rounded-lg border border-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 sm:text-sm"
                                 >
+
                                     <LogOut size={16} />
+
                                     Đăng xuất
+
                                 </button>
 
                             </>
+
                         ) : (
 
                             <button
@@ -560,8 +677,11 @@ export default function App() {
                                 onClick={() => setAuthOpen(true)}
                                 className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
                             >
+
                                 <LogIn size={17} />
+
                                 Đăng nhập
+
                             </button>
 
                         )}
@@ -593,13 +713,7 @@ export default function App() {
                                     <button
                                         type="button"
                                         key={id}
-                                        onClick={() => {
-                                            setActivePage(id);
-                                            window.scrollTo({
-                                                top: 0,
-                                                behavior: 'smooth'
-                                            });
-                                        }}
+                                        onClick={() => navigatePage(id)}
                                         className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${
                                             activePage === id
                                                 ? 'bg-emerald-50 font-bold text-emerald-700'
@@ -612,9 +726,11 @@ export default function App() {
                                         {label}
 
                                         {id === 'cart' && totalCartCount > 0 && (
+
                                             <span className="ml-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs text-white">
                                                 {totalCartCount}
                                             </span>
+
                                         )}
 
                                     </button>
@@ -660,13 +776,7 @@ export default function App() {
                                 <button
                                     type="button"
                                     key={id}
-                                    onClick={() => {
-                                        setActivePage(id);
-                                        window.scrollTo({
-                                            top: 0,
-                                            behavior: 'smooth'
-                                        });
-                                    }}
+                                    onClick={() => navigatePage(id)}
                                     className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
                                         activePage === id
                                             ? 'bg-emerald-50 font-bold text-emerald-700'
@@ -698,7 +808,66 @@ export default function App() {
 
             )}
 
-            {/* FOOTER DÙNG CHUNG TOÀN WEBSITE */}
+            {/* ==================================================
+                THÔNG BÁO YÊU CẦU ĐĂNG NHẬP
+            ================================================== */}
+
+            {loginNotice && (
+
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-sm">
+
+                    <div className="w-full max-w-md rounded-3xl border border-emerald-100 bg-white p-6 shadow-2xl">
+
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                            <AlertCircle size={28} />
+                        </div>
+
+                        <h3 className="text-center text-xl font-bold text-slate-800">
+                            Bạn cần đăng nhập
+                        </h3>
+
+                        <p className="mt-3 text-center leading-relaxed text-slate-600">
+                            {loginNotice}
+                        </p>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setLoginNotice(null);
+                                    setPendingPage(null);
+                                }}
+                                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50"
+                            >
+                                Để sau
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setLoginNotice(null);
+                                    setAuthOpen(true);
+                                }}
+                                className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
+                            >
+
+                                <span className="inline-flex items-center justify-center gap-2">
+                                    <LogIn size={18} />
+                                    Đăng nhập ngay
+                                </span>
+
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            )}
+
+            {/* FOOTER */}
 
             <Footer />
 
@@ -706,11 +875,16 @@ export default function App() {
 
             <AuthModal
                 isOpen={authOpen}
-                onClose={() => setAuthOpen(false)}
+                onClose={() => {
+                    setAuthOpen(false);
+                    setLoginNotice(null);
+                    setPendingPage(null);
+                }}
                 onLoginSuccess={handleLoginSuccess}
             />
 
         </div>
 
     );
+
 }
