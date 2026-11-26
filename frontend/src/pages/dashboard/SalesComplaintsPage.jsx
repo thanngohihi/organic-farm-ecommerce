@@ -6,7 +6,13 @@ export default function SalesComplaintsPage() {
   const [complaints, setComplaints] = useState([]);
 
   useEffect(() => {
-    fetchComplaintsForSales().then(setComplaints);
+    fetchComplaintsForSales().then((list) => {
+      const enriched = list.map((c, idx) => ({
+        ...c,
+        amount: c.amount ?? (idx === 0 ? 45000 : 38000),
+      }));
+      setComplaints(enriched);
+    });
   }, []);
 
   const handleAction = async (id, actionType) => {
@@ -22,7 +28,7 @@ export default function SalesComplaintsPage() {
                 actionType === 'refund' ? 'approved_refund' : 'approved_compensate',
               resolution_note:
                 actionType === 'refund'
-                  ? 'Đã duyệt hoàn tiền 100%'
+                  ? `Đã duyệt hoàn tiền ${Number(c.amount || 0).toLocaleString('vi-VN')}đ`
                   : 'Đã tạo đơn giao bù 0đ',
             }
           : c
@@ -41,10 +47,7 @@ export default function SalesComplaintsPage() {
 
       <div className="space-y-4">
         {complaints.map((item) => (
-          <div
-            key={item.id}
-            className="rounded-xl border border-slate-200 p-4"
-          >
+          <div key={item.id} className="rounded-xl border border-slate-200 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="font-mono text-xs font-bold text-slate-500">
@@ -72,9 +75,9 @@ export default function SalesComplaintsPage() {
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
               {item.status === 'pending' ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleAction(item.id, 'compensate')}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
@@ -93,6 +96,15 @@ export default function SalesComplaintsPage() {
                   <CheckCircle2 size={16} /> {item.resolution_note}
                 </span>
               )}
+
+              <div className="ml-auto flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-1.5 text-right">
+                <span className="text-xs font-medium text-slate-600">
+                  Số tiền:
+                </span>
+                <span className="text-sm font-extrabold text-rose-600">
+                  {Number(item.amount || 0).toLocaleString('vi-VN')}đ
+                </span>
+              </div>
             </div>
           </div>
         ))}

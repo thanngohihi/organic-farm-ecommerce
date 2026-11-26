@@ -17,76 +17,94 @@ import {
 } from '../../services/api';
 
 export default function FarmBatchesPage() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
   const [batches, setBatches] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Form khởi tạo lô mới
+  const [productMode, setProductMode] = useState('select');
+  const [manualProductName, setManualProductName] = useState('');
+  const [manualCategory, setManualCategory] = useState('Rau ăn lá');
+  const [manualUnit, setManualUnit] = useState('Kg');
+
   const [formData, setFormData] = useState({
     product_id: '1',
     initial_quantity: '',
-    harvest_date: new Date().toISOString().slice(0, 10),
+    harvest_date: todayStr,
     expiry_date: '',
   });
 
-  // Modal In QR
   const [selectedQrBatch, setSelectedQrBatch] = useState(null);
   const printRef = useRef();
-
-  // Modal Xuất hủy / Hao hụt
   const [wasteModalBatch, setWasteModalBatch] = useState(null);
   const [wasteQty, setWasteQty] = useState('');
   const [wasteReason, setWasteReason] = useState('Hư hỏng sau thu hoạch');
 
   useEffect(() => {
-    loadData();
+    Promise.all([fetchBatches(), fetchProducts()]).then(([batchList, prodList]) => {
+      setBatches(batchList);
+      setProducts(prodList);
+      setLoading(false);
+    });
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [batchList, productList] = await Promise.all([
-      fetchBatches(),
-      fetchProducts(),
-    ]);
-    setBatches(batchList);
-    setProducts(productList);
-    setLoading(false);
-  };
-
-  // Xử lý tạo lô FEFO
   const handleCreateBatch = async (e) => {
     e.preventDefault();
-    if (!formData.initial_quantity || !formData.expiry_date) {
-      alert('Vui lòng nhập đầy đủ số lượng và ngày hết hạn!');
+
+    if (formData.harvest_date < todayStr) {
+      alert('Ngày thu hoạch phải từ hôm nay trở đi!');
+      return;
+    }
+    if (formData.expiry_date < todayStr || formData.expiry_date < formData.harvest_date) {
+      alert('Hạn sử dụng phải lớn hơn hoặc bằng hôm nay và ngày thu hoạch!');
       return;
     }
 
-    const selectedProd = products.find(
-      (p) => String(p.id) === String(formData.product_id)
-    );
+    let productName = '';
+    let categoryName = '';
+    let unitName = 'Kg';
+
+    if (productMode === 'manual') {
+      if (!manualProductName.trim()) {
+        alert('Vui lòng nhập tên sản phẩm thu hoạch!');
+        return;
+      }
+      productName = manualProductName.trim();
+      categoryName = manualCategory;
+      unitName = manualUnit.trim() || 'Kg';
+
+      setProducts((prev) => [
+        { id: Date.now(), name: productName, category: categoryName, unit: unitName },
+        ...prev,
+      ]);
+    } else {
+      const selectedProd = products.find(
+        (p) => String(p.id) === String(formData.product_id)
+      );
+      productName = selectedProd?.name || 'Nông sản hữu cơ';
+      categoryName = selectedProd?.category || 'Rau củ quả';
+      unitName = selectedProd?.unit || 'Kg';
+    }
 
     const newBatch = await createBatch({
       ...formData,
-      product_name: selectedProd?.name || 'Nông sản hữu cơ',
-      unit: selectedProd?.unit || 'Kg',
+      product_name: productName,
+      category: categoryName,
+      unit: unitName,
     });
 
-    setBatches([newBatch, ...batches]);
-    setFormData({
-      ...formData,
-      initial_quantity: '',
-      expiry_date: '',
-    });
-    alert(`Đã khởi tạo lô ${newBatch.batch_code} thành công!`);
+    setBatches((prev) => [newBatch, ...prev]);
+    setFormData({ ...formData, initial_quantity: '', expiry_date: '' });
+    setManualProductName('');
+    alert(`Đã khởi tạo lô ${newBatch.batch_code} (${productName}) thành công!`);
   };
 
-  // Xử lý in tem QR
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: selectedQrBatch ? `QR_${selectedQrBatch.batch_code}` : 'QR_Tem',
   });
 
-  // Xử lý ghi nhận hao hụt / xuất hủy
   const handleConfirmWaste = async (e) => {
     e.preventDefault();
     const qty = Number(wasteQty);
@@ -116,86 +134,160 @@ export default function FarmBatchesPage() {
 
   return (
     <div className="space-y-6">
-      {/* FORM KHỞI TẠO LÔ HÀNG MỚI */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <PackagePlus className="text-emerald-600" size={22} />
-          <h2 className="text-xl font-bold text-slate-800">
-            Khởi tạo Lô hàng Thu hoạch (FEFO)
-          </h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <PackagePlus className="text-emerald-600" size={22} />
+            <h2 className="text-xl font-bold text-slate-800">
+              Khởi tạo Lô hàng & Danh mục Sản phẩm (FEFO)
+            </h2>
+          </div>
+
+          <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setProductMode('select')}
+              className={`rounded-lg px-3 py-1.5 transition ${
+                productMode === 'select'
+                  ? 'bg-white text-emerald-700 shadow-sm'
+                  : 'text-slate-600'
+              }`}
+            >
+              Chọn sản phẩm sẵn
+            </button>
+            <button
+              type="button"
+              onClick={() => setProductMode('manual')}
+              className={`rounded-lg px-3 py-1.5 transition ${
+                productMode === 'manual'
+                  ? 'bg-white text-emerald-700 shadow-sm'
+                  : 'text-slate-600'
+              }`}
+            >
+              + Ghi tay sản phẩm mới
+            </button>
+          </div>
         </div>
 
-        <form
-          onSubmit={handleCreateBatch}
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5"
-        >
-          <div className="lg:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Sản phẩm thu hoạch
-            </label>
-            <select
-              value={formData.product_id}
-              onChange={(e) =>
-                setFormData({ ...formData, product_id: e.target.value })
-              }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
-            >
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.unit})
-                </option>
-              ))}
-            </select>
+        <form onSubmit={handleCreateBatch} className="space-y-4">
+          {productMode === 'select' ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Chọn sản phẩm thu hoạch
+              </label>
+              <select
+                value={formData.product_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, product_id: e.target.value })
+                }
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — [{p.category || 'Nông sản'}] ({p.unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Tên sản phẩm ghi tay *
+                </label>
+                <input
+                  type="text"
+                  placeholder="VD: Bắp cải tím Đà Lạt"
+                  value={manualProductName}
+                  onChange={(e) => setManualProductName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Danh mục sản phẩm *
+                </label>
+                <select
+                  value={manualCategory}
+                  onChange={(e) => setManualCategory(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="Rau ăn lá">Rau ăn lá</option>
+                  <option value="Rau củ quả">Rau củ quả</option>
+                  <option value="Trái cây tươi">Trái cây tươi</option>
+                  <option value="Nấm & Gia vị hữu cơ">Nấm & Gia vị hữu cơ</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Đơn vị tính
+                </label>
+                <input
+                  type="text"
+                  placeholder="VD: Kg, Bó 500g..."
+                  value={manualUnit}
+                  onChange={(e) => setManualUnit(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Số lượng nhập kho *
+              </label>
+              <input
+                type="number"
+                min="1"
+                placeholder="VD: 100"
+                value={formData.initial_quantity}
+                onChange={(e) =>
+                  setFormData({ ...formData, initial_quantity: e.target.value })
+                }
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Ngày thu hoạch (Từ hôm nay) *
+              </label>
+              <input
+                type="date"
+                min={todayStr}
+                value={formData.harvest_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, harvest_date: e.target.value })
+                }
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Hạn sử dụng FEFO (Từ hôm nay) *
+              </label>
+              <input
+                type="date"
+                min={formData.harvest_date || todayStr}
+                value={formData.expiry_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, expiry_date: e.target.value })
+                }
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
+                required
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Số lượng nhập
-            </label>
-            <input
-              type="number"
-              min="1"
-              placeholder="VD: 100"
-              value={formData.initial_quantity}
-              onChange={(e) =>
-                setFormData({ ...formData, initial_quantity: e.target.value })
-              }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Ngày thu hoạch
-            </label>
-            <input
-              type="date"
-              value={formData.harvest_date}
-              onChange={(e) =>
-                setFormData({ ...formData, harvest_date: e.target.value })
-              }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">
-              Hạn sử dụng (FEFO)
-            </label>
-            <input
-              type="date"
-              value={formData.expiry_date}
-              onChange={(e) =>
-                setFormData({ ...formData, expiry_date: e.target.value })
-              }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none"
-              required
-            />
-          </div>
-
-          <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
+          <div className="flex justify-end">
             <button
               type="submit"
               className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
@@ -206,7 +298,7 @@ export default function FarmBatchesPage() {
         </form>
       </div>
 
-      {/* DANH SÁCH LÔ HÀNG TRONG KHO */}
+      {/* BẢNG DANH SÁCH LÔ HÀNG */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-lg font-bold text-slate-800">
           Danh sách Lô hàng tại Nông trại
@@ -220,9 +312,9 @@ export default function FarmBatchesPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                   <th className="p-3">Mã Lô</th>
-                  <th className="p-3">Sản phẩm</th>
+                  <th className="p-3">Sản phẩm & Danh mục</th>
                   <th className="p-3">Tồn kho</th>
-                  <th className="p-3">Hạn sử dụng</th>
+                  <th className="p-3">Thu hoạch / HSD</th>
                   <th className="p-3">Trạng thái</th>
                   <th className="p-3 text-right">Thao tác</th>
                 </tr>
@@ -233,14 +325,22 @@ export default function FarmBatchesPage() {
                     <td className="p-3 font-mono font-bold text-emerald-700">
                       {batch.batch_code}
                     </td>
-                    <td className="p-3 font-medium text-slate-800">
-                      {batch.product_name}
+                    <td className="p-3">
+                      <p className="font-medium text-slate-800">{batch.product_name}</p>
+                      <span className="text-xs text-slate-500">
+                        {batch.category || 'Nông sản sạch'}
+                      </span>
                     </td>
                     <td className="p-3">
                       <span className="font-bold">{batch.remaining_quantity}</span> /{' '}
                       {batch.initial_quantity} {batch.unit}
                     </td>
-                    <td className="p-3 text-slate-600">{batch.expiry_date}</td>
+                    <td className="p-3 text-xs text-slate-600">
+                      <div>TH: {batch.harvest_date}</div>
+                      <div className="font-semibold text-slate-800">
+                        HSD: {batch.expiry_date}
+                      </div>
+                    </td>
                     <td className="p-3">
                       {batch.is_flash_sale ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
@@ -278,7 +378,7 @@ export default function FarmBatchesPage() {
         )}
       </div>
 
-      {/* MODAL XEM VÀ IN TEM QR */}
+      {/* MODAL IN QR */}
       {selectedQrBatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
@@ -294,7 +394,6 @@ export default function FarmBatchesPage() {
               </button>
             </div>
 
-            {/* Vùng nội dung sẽ được in ra giấy */}
             <div
               ref={printRef}
               className="flex flex-col items-center rounded-xl border-2 border-dashed border-emerald-400 bg-white p-5 text-center"
@@ -332,7 +431,7 @@ export default function FarmBatchesPage() {
         </div>
       )}
 
-      {/* MODAL GHI NHẬN XUẤT HỦY / HAO HỤT */}
+      {/* MODAL XUẤT HỦY */}
       {wasteModalBatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <form
@@ -385,7 +484,9 @@ export default function FarmBatchesPage() {
                   onChange={(e) => setWasteReason(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                 >
-                  <option value="Hư hỏng sau thu hoạch">Hư hỏng / dập nát sau thu hoạch</option>
+                  <option value="Hư hỏng sau thu hoạch">
+                    Hư hỏng / dập nát sau thu hoạch
+                  </option>
                   <option value="Quá hạn sử dụng">Quá hạn sử dụng</option>
                   <option value="Sâu bệnh phát sinh">Sâu bệnh phát sinh</option>
                 </select>

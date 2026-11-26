@@ -3,6 +3,7 @@ import FarmingLogsPage from './pages/dashboard/FarmingLogsPage';
 import SalesOrdersPage from './pages/dashboard/SalesOrdersPage';
 import SalesComplaintsPage from './pages/dashboard/SalesComplaintsPage';
 import AdminStatsPage from './pages/dashboard/AdminStatsPage';
+import AdminAccountsPage from './pages/dashboard/AdminAccountsPage';
 import React, { useEffect, useState } from 'react';
 
 import {
@@ -155,9 +156,9 @@ const NAV_ITEMS = {
             icon: BarChart3,
         },
         {
-            id: 'admin_products',
-            label: 'Danh mục sản phẩm',
-            icon: ShoppingBag,
+            id: 'admin_accounts',
+            label: 'Tạo tài khoản nhân sự',
+            icon: UserCircle,
         },
     ],
 };
@@ -181,7 +182,17 @@ export default function App() {
 
     const [cartItems, setCartItems] = useState([]);
 
+    // Giữ trạng thái các tab đã mở để chuyển tab nhanh tức thì
+    const [visitedTabs, setVisitedTabs] = useState({});
+
     const activeRole = getUserRole(currentUser);
+
+    useEffect(() => {
+        if (activeRole !== 'customer') {
+            const key = `${activeRole}:${activePage}`;
+            setVisitedTabs((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+        }
+    }, [activeRole, activePage]);
 
     // ==================================================
     // ĐIỀU HƯỚNG TRANG
@@ -394,6 +405,7 @@ export default function App() {
         setLoginNotice(null);
         setPendingPage(null);
         setQrBatchCode('');
+        setVisitedTabs({});
 
         setActivePage('home');
 
@@ -537,39 +549,63 @@ export default function App() {
     };
 
     // ==================================================
-    // HIỂN THỊ TRANG NHÂN VIÊN / ADMIN
+    // HIỂN THỊ TRANG NHÂN VIÊN / ADMIN (GIỮ CACHE CHUYỂN TAB NHANH)
     // ==================================================
 
     const renderStaffPage = () => {
+        const isLoaded = (role, page) =>
+            (activeRole === role && activePage === page) ||
+            Boolean(visitedTabs[`${role}:${page}`]);
 
         if (activeRole === 'farm_staff') {
-            switch (activePage) {
-                case 'farm_logs':
-                    return <FarmingLogsPage />;
-                case 'farm_batches':
-                default:
-                    return <FarmBatchesPage />;
-            }
+            return (
+                <>
+                    {isLoaded('farm_staff', 'farm_batches') && (
+                        <div className={activePage === 'farm_batches' ? 'block' : 'hidden'}>
+                            <FarmBatchesPage />
+                        </div>
+                    )}
+                    {isLoaded('farm_staff', 'farm_logs') && (
+                        <div className={activePage === 'farm_logs' ? 'block' : 'hidden'}>
+                            <FarmingLogsPage />
+                        </div>
+                    )}
+                </>
+            );
         }
 
         if (activeRole === 'sales') {
-            switch (activePage) {
-                case 'sales_complaints':
-                    return <SalesComplaintsPage />;
-                case 'sales_orders':
-                default:
-                    return <SalesOrdersPage />;
-            }
+            return (
+                <>
+                    {isLoaded('sales', 'sales_orders') && (
+                        <div className={activePage === 'sales_orders' ? 'block' : 'hidden'}>
+                            <SalesOrdersPage />
+                        </div>
+                    )}
+                    {isLoaded('sales', 'sales_complaints') && (
+                        <div className={activePage === 'sales_complaints' ? 'block' : 'hidden'}>
+                            <SalesComplaintsPage />
+                        </div>
+                    )}
+                </>
+            );
         }
 
         if (activeRole === 'admin') {
-            switch (activePage) {
-                case 'admin_products':
-                    return <FarmBatchesPage />; // Admin có thể xem và quản lý luôn kho lô hàng
-                case 'fefo_dashboard':
-                default:
-                    return <AdminStatsPage />;
-            }
+            return (
+                <>
+                    {isLoaded('admin', 'fefo_dashboard') && (
+                        <div className={activePage === 'fefo_dashboard' ? 'block' : 'hidden'}>
+                            <AdminStatsPage />
+                        </div>
+                    )}
+                    {isLoaded('admin', 'admin_accounts') && (
+                        <div className={activePage === 'admin_accounts' ? 'block' : 'hidden'}>
+                            <AdminAccountsPage />
+                        </div>
+                    )}
+                </>
+            );
         }
 
         return null;
@@ -636,19 +672,21 @@ export default function App() {
                                         currentUser.email ||
                                         'Tài khoản'}
 
-                                    <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-200">
+                                    {activeRole === 'customer' && (
+                                        <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-200">
 
-                                        <Award size={14} />
+                                            <Award size={14} />
 
-                                        {Number(
-                                            currentUser.loyalty_points ??
-                                            currentUser.loyaltyPoints ??
-                                            currentUser.points ??
-                                            currentUser.loyalty?.points ??
-                                            0
-                                        ).toLocaleString('vi-VN')} điểm
+                                            {Number(
+                                                currentUser.loyalty_points ??
+                                                currentUser.loyaltyPoints ??
+                                                currentUser.points ??
+                                                currentUser.loyalty?.points ??
+                                                0
+                                            ).toLocaleString('vi-VN')} điểm
 
-                                    </span>
+                                        </span>
+                                    )}
 
                                 </span>
 
@@ -867,9 +905,9 @@ export default function App() {
 
             )}
 
-            {/* FOOTER */}
+            {/* FOOTER CHỈ HIỂN THỊ CHO KHÁCH HÀNG */}
 
-            <Footer />
+            {activeRole === 'customer' && <Footer />}
 
             {/* MODAL ĐĂNG NHẬP */}
 
