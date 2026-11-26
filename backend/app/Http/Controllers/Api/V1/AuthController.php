@@ -8,7 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
-class AuthController
+class AuthController extends Controller
 {
     //1. [Role 1: Guest] Trả về cấu hình quyền hạn cho Khách vãng lai chưa đăng nhập
     public function guestSession(): JsonResponse
@@ -45,7 +45,7 @@ class AuthController
             'full_name'      => $validated['full_name'],
             'email'          => $validated['email'],
             'phone'          => $validated['phone'],
-            'password'       => Hash::make($validated['password']), // Mã hóa mật khẩu Bcrypt
+            'password'       => $validated['password'], // Tự động mã hóa qua cast 'hashed' của User model
             'address'        => $validated['address'] ?? null,
             'latitude'       => $validated['latitude'] ?? null,
             'longitude'      => $validated['longitude'] ?? null,
@@ -135,7 +135,7 @@ class AuthController
             'full_name'      => $validated['full_name'],
             'email'          => $validated['email'],
             'phone'          => $validated['phone'],
-            'password'       => Hash::make($validated['password']),
+            'password'       => $validated['password'],
             'address'        => $validated['address'] ?? 'Nông trại Organic',
             'loyalty_points' => 0,
             'is_active'      => true,
