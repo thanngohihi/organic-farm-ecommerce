@@ -2,17 +2,25 @@
 
 namespace App\Console;
 
+use App\Console\Commands\EvaluateBatchExpiryCommand;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
+    protected $commands = [
+        EvaluateBatchExpiryCommand::class,
+    ];
+
     /**
      * Define the application's command schedule.
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Cron-job lịch trình (ví dụ: phát cảnh báo Flash Sale, chạy gói Subscription)
+        // Quét lô cận date (<= 2 ngày) & khóa lô quá hạn lúc 00:00 mỗi ngày
+        $schedule->command('batches:evaluate-expiry --discount=30')
+            ->dailyAt('00:00')
+            ->withoutOverlapping();
     }
 
     /**

@@ -3,46 +3,39 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Product;
+use App\Models\User;
+use App\Services\FefoWarehouseService;
 use App\Services\MoMoPaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use RuntimeException;
+use Throwable;
 
-class OrderController
+class OrderController extends Controller
 {
-    /**
-     * Service tích hợp cổng thanh toán MoMo
-     *
-     * @var MoMoPaymentService
-     */
-    protected $momoService;
-
-    /**
-     * Inject MoMoPaymentService từ app/Services
-     *
-     * @param MoMoPaymentService $momoService
-     */
-    public function __construct(MoMoPaymentService $momoService)
-    {
-        $this->momoService = $momoService;
-    }
+    public function __construct(
+        protected MoMoPaymentService $momoService,
+        protected FefoWarehouseService $fefoService
+    ) {}
 
     /**
      * API: Đặt đơn hàng mua lẻ (Checkout Single - FEFO)
      * Endpoint: POST /api/v1/customer/orders/checkout-single
-     *
-     * @param Request $request
-     * @return JsonResponse
      */
     public function checkoutSingle(Request $request): JsonResponse
     {
-        // 1. Kiểm tra và Validate dữ liệu gửi từ Frontend (Người 4)
         $validated = $request->validate([
             'delivery_address'   => ['required', 'string', 'max:500'],
             'distance_km'        => ['required', 'numeric', 'min:0'],
             'payment_method'     => ['required', 'in:cod,momo,vnpay'],
-            'use_loyalty_points' => ['nullable', 'numeric', 'min:0'],
+            'use_loyalty_points' => ['nullable', 'integer', 'min:0'],
             'items'              => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer'],
+            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.quantity'   => ['required', 'numeric', 'min:0.1'],
         ], [
             'delivery_address.required' => 'Vui lòng nhập địa chỉ giao hàng.',
@@ -52,41 +45,70 @@ class OrderController
         ]);
 
         try {
-            // 2. Tính tiền hàng và xử lý danh sách sản phẩm
-            $subtotal = 0;
-            foreach ($validated['items'] as $item) {
-                $unitPrice = 35000; // Đơn giá trung bình mẫu 35.000đ/kg
-                $subtotal += ($item['quantity'] * $unitPrice);
-            }
+            $order = DB::transaction(function () use ($request, $validated) {
+                $customer = User::query()->lockForUpdate()->findOrFail($request->user()->id);
 
-            // 3. Tính phí vận chuyển động theo khoảng cách km
-            $distanceKm = (float) $validated['distance_km'];
-            $shippingFee = 15000 + (ceil($distanceKm) * 5000);
+                $subtotal = 0.0;
+                $orderItemsPayload = [];
 
-            // 4. Xử lý giảm giá bằng điểm thưởng Loyalty (1 điểm = 1.000đ)
-            $pointsUsed = $validated['use_loyalty_points'] ?? 0;
-            $loyaltyDiscount = $pointsUsed * 1000;
+                foreach ($validated['items'] as $item) {
+                    $product = Product::query()
+                        ->where('is_active', true)
+                        ->find($item['product_id']);
 
-            // 5. Tính tổng số tiền phải trả
-            $totalAmount = max(0, ($subtotal + $shippingFee) - $loyaltyDiscount);
+                    if (!$product) {
+                        throw new RuntimeException("Sản phẩm ID {$item['product_id']} không tồn tại hoặc đã ngừng kinh doanh.");
+                    }
 
-            // 6. Sinh mã đơn hàng duy nhất dạng ORD-YYYYMMDD-XXXX
-            $orderCode = 'ORD-' . date('Ymd') . '-' . rand(1000, 9999);
+                    $quantity = round((float) $item['quantity'], 2);
+                    $fefoResult = $this->fefoService->exportByFefo($product->id, $quantity);
+                    $basePrice = (float) $product->base_price;
 
-            // 7. Nếu chọn thanh toán MoMo -> Gọi MoMoPaymentService lấy link thanh toán
-            $payUrl = null;
-            $qrCodeUrl = null;
-            if ($validated['payment_method'] === 'momo') {
-                $momoResult = $this->momoService->createPaymentLink($orderCode, $totalAmount);
-                $payUrl = $momoResult['pay_url'] ?? null;
-                $qrCodeUrl = $momoResult['qr_code_url'] ?? null;
-            }
+                    foreach ($fefoResult['allocations'] as $allocation) {
+                        $discount = ($allocation['is_flash_sale'] && $allocation['discount_percent'] > 0)
+                            ? (int) $allocation['discount_percent']
+                            : 0;
+                        $unitPrice = $discount > 0
+                            ? round($basePrice * (1 - ($discount / 100)), 0)
+                            : $basePrice;
+                        $deductedQty = (float) $allocation['deducted_quantity'];
+                        $lineTotal = round($unitPrice * $deductedQty, 2);
 
-            // 8. Trả về kết quả JSON theo đúng chuẩn postman_collection.json
-            return response()->json([
-                'status'  => 'success',
-                'message' => 'Đặt hàng thành công. Hệ thống tự động xuất kho theo nguyên tắc FEFO.',
-                'data'    => [
+                        $subtotal += $lineTotal;
+
+                        $orderItemsPayload[] = [
+                            'product_id'  => $product->id,
+                            'batch_id'    => $allocation['batch_id'],
+                            'quantity'    => $deductedQty,
+                            'unit_price'  => $unitPrice,
+                            'total_price' => $lineTotal,
+                        ];
+                    }
+                }
+
+                $subtotal = round($subtotal, 2);
+                $distanceKm = round((float) $validated['distance_km'], 2);
+                $shippingFee = 15000 + (ceil($distanceKm) * 5000);
+
+                $pointsUsed = (int) ($validated['use_loyalty_points'] ?? 0);
+                if ($pointsUsed > (int) $customer->loyalty_points) {
+                    throw new RuntimeException(
+                        "Số điểm Loyalty sử dụng ({$pointsUsed}) vượt quá số điểm hiện có ({$customer->loyalty_points})."
+                    );
+                }
+
+                $loyaltyDiscount = $pointsUsed * 1000;
+                $totalAmount = max(0, ($subtotal + $shippingFee) - $loyaltyDiscount);
+
+                if ($pointsUsed > 0) {
+                    $customer->loyalty_points = max(0, (int) $customer->loyalty_points - $pointsUsed);
+                    $customer->save();
+                }
+
+                $orderCode = 'ORD-' . date('Ymd') . '-' . strtoupper(Str::random(6));
+
+                $order = Order::query()->create([
+                    'customer_id'      => $customer->id,
                     'order_code'       => $orderCode,
                     'delivery_address' => $validated['delivery_address'],
                     'distance_km'      => $distanceKm,
@@ -97,12 +119,51 @@ class OrderController
                     'payment_method'   => $validated['payment_method'],
                     'payment_status'   => 'cho_thanh_toan',
                     'order_status'     => 'cho_xac_nhan',
+                ]);
+
+                foreach ($orderItemsPayload as $itemPayload) {
+                    OrderItem::query()->create(array_merge($itemPayload, [
+                        'order_id' => $order->id,
+                    ]));
+                }
+
+                return $order->load('items');
+            });
+
+            $payUrl = null;
+            $qrCodeUrl = null;
+            if ($order->payment_method === 'momo') {
+                $momoResult = $this->momoService->createPaymentLink($order->order_code, (float) $order->total_amount);
+                $payUrl = $momoResult['pay_url'] ?? null;
+                $qrCodeUrl = $momoResult['qr_code_url'] ?? null;
+            }
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Đặt hàng thành công. Hệ thống tự động xuất kho theo nguyên tắc FEFO.',
+                'data'    => [
+                    'id'               => $order->id,
+                    'order_code'       => $order->order_code,
+                    'delivery_address' => $order->delivery_address,
+                    'distance_km'      => (float) $order->distance_km,
+                    'subtotal'         => (float) $order->subtotal,
+                    'shipping_fee'     => (float) $order->shipping_fee,
+                    'loyalty_discount' => (float) $order->loyalty_discount,
+                    'total_amount'     => (float) $order->total_amount,
+                    'payment_method'   => $order->payment_method,
+                    'payment_status'   => $order->payment_status,
+                    'order_status'     => $order->order_status,
                     'payment_url'      => $payUrl,
                     'qr_code_url'      => $qrCodeUrl,
+                    'items'            => $order->items,
                 ],
             ], 201);
-
-        } catch (\Exception $e) {
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (Throwable $e) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Lỗi xử lý đặt hàng: ' . $e->getMessage(),

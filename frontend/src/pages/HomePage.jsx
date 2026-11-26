@@ -10,7 +10,11 @@ import {
     Leaf,
     Clock,
     Loader2,
-    RefreshCw
+    RefreshCw,
+    X,
+    ArrowRight,
+    Copy,
+    Check
 } from 'lucide-react';
 
 import axios from 'axios';
@@ -30,6 +34,13 @@ export default function HomePage({
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+
+    // Giỏ hàng nổi
+    const [showFloatingCart, setShowFloatingCart] = useState(false);
+
+    // Popup QR
+    const [qrProduct, setQrProduct] = useState(null);
+    const [copied, setCopied] = useState(false);
 
     // =====================================
     // LẤY SẢN PHẨM TỪ LARAVEL API
@@ -114,7 +125,35 @@ export default function HomePage({
     }, []);
 
     // =====================================
-    // DANH MỤC SẢN PHẨM
+    // HIỆN GIỎ HÀNG KHI CUỘN ĐẾN SẢN PHẨM
+    // =====================================
+
+    useEffect(() => {
+
+        const handleScroll = () => {
+            const productsSection = document.getElementById('products');
+
+            if (!productsSection) return;
+
+            const rect = productsSection.getBoundingClientRect();
+
+            setShowFloatingCart(
+                rect.top < window.innerHeight * 0.7
+            );
+        };
+
+        window.addEventListener('scroll', handleScroll);
+
+        handleScroll();
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+        };
+
+    }, []);
+
+    // =====================================
+    // DANH MỤC
     // =====================================
 
     const categories = [
@@ -145,7 +184,7 @@ export default function HomePage({
     });
 
     // =====================================
-    // NÚT TÌM KIẾM
+    // TÌM KIẾM
     // =====================================
 
     const handleSearch = () => {
@@ -155,7 +194,7 @@ export default function HomePage({
     };
 
     // =====================================
-    // THÊM SẢN PHẨM VÀO GIỎ HÀNG
+    // THÊM VÀO GIỎ HÀNG
     // =====================================
 
     const handleAddToCart = (product) => {
@@ -199,20 +238,39 @@ export default function HomePage({
     };
 
     // =====================================
-    // TRUY XUẤT NGUỒN GỐC
+    // MỞ POPUP QR
+    // =====================================
+
+    const handleOpenQr = (product) => {
+
+        if (
+            !product.batch ||
+            product.batch === 'N/A'
+        ) {
+            alert('Sản phẩm chưa có mã lô để truy xuất.');
+            return;
+        }
+
+        setCopied(false);
+        setQrProduct(product);
+    };
+
+    // =====================================
+    // CHUYỂN SANG TRUY XUẤT NGUỒN GỐC
     // =====================================
 
     const handleTraceability = (product) => {
 
         if (
-            !product.batch ||
+            !product?.batch ||
             product.batch === 'N/A'
         ) {
             alert('Sản phẩm chưa có lô hàng để truy xuất.');
             return;
         }
 
-        // Điều hướng thông qua App.jsx
+        setQrProduct(null);
+
         if (onNavigateQr) {
             onNavigateQr(product.batch);
         } else {
@@ -221,7 +279,27 @@ export default function HomePage({
     };
 
     // =====================================
-    // TỔNG SẢN PHẨM TRONG GIỎ
+    // COPY MÃ LÔ
+    // =====================================
+
+    const handleCopyBatch = async () => {
+        if (!qrProduct?.batch) return;
+
+        try {
+            await navigator.clipboard.writeText(qrProduct.batch);
+            setCopied(true);
+
+            setTimeout(() => {
+                setCopied(false);
+            }, 2000);
+
+        } catch {
+            alert('Không thể sao chép mã lô trên trình duyệt này.');
+        }
+    };
+
+    // =====================================
+    // TỔNG GIỎ HÀNG
     // =====================================
 
     const cartCount = cartItems.reduce(
@@ -230,12 +308,11 @@ export default function HomePage({
     );
 
     // =====================================
-    // ĐI ĐẾN TRANG GIỎ HÀNG
+    // ĐI ĐẾN GIỎ HÀNG
     // =====================================
 
     const handleGoToCart = () => {
 
-        // Điều hướng thông qua App.jsx
         if (onGoToCart) {
             onGoToCart();
         } else {
@@ -251,19 +328,15 @@ export default function HomePage({
 
         <div id="home" className="min-h-screen bg-gray-50">
 
-            {/* ==============================
-                BANNER
-            ============================== */}
+            {/* BANNER */}
 
             <section className="relative overflow-hidden bg-green-700 px-4 py-20 text-white md:py-28">
 
                 <div className="absolute inset-0 pointer-events-none opacity-10">
-
                     <Leaf
                         size={300}
                         className="absolute -right-10 -top-10"
                     />
-
                 </div>
 
                 <div className="relative mx-auto max-w-7xl">
@@ -271,29 +344,20 @@ export default function HomePage({
                     <div className="max-w-2xl">
 
                         <span className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/20 px-5 py-2 text-sm font-semibold">
-
                             <CheckCircle2 size={18} />
-
                             Nông trại sạch 100%
-
                         </span>
 
                         <h1 className="mb-6 text-4xl font-extrabold leading-tight md:text-6xl">
-
                             Nông Sản Tươi Xanh
-
                             <br />
-
                             Thu Hoạch Mỗi Sáng
-
                         </h1>
 
                         <p className="mb-8 text-base leading-8 text-green-50 md:text-lg">
-
                             Đặt hàng ngay hôm nay để nhận giao hàng tận nhà.
                             Tự do quét mã QR kiểm tra nhật ký gieo trồng
                             và nguồn gốc sản phẩm!
-
                         </p>
 
                         <button
@@ -309,9 +373,7 @@ export default function HomePage({
 
             </section>
 
-            {/* ==============================
-                TÌM KIẾM SẢN PHẨM
-            ============================== */}
+            {/* TÌM KIẾM */}
 
             <section className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
 
@@ -327,9 +389,7 @@ export default function HomePage({
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handleSearch();
-                            }
+                            if (e.key === 'Enter') handleSearch();
                         }}
                         placeholder="Tìm kiếm rau củ, trái cây..."
                         className="w-full border-none bg-transparent py-3 text-gray-700 outline-none"
@@ -346,9 +406,7 @@ export default function HomePage({
 
             </section>
 
-            {/* ==============================
-                DANH SÁCH SẢN PHẨM
-            ============================== */}
+            {/* DANH SÁCH SẢN PHẨM */}
 
             <section
                 id="products"
@@ -377,20 +435,15 @@ export default function HomePage({
 
                 </div>
 
-                {/* ==============================
-                    DANH MỤC
-                ============================== */}
+                {/* DANH MỤC */}
 
                 <div className="mb-5">
 
                     <div className="mb-3 flex items-center gap-2 text-gray-700">
-
                         <Filter size={20} />
-
                         <span className="font-semibold">
                             Danh mục sản phẩm
                         </span>
-
                     </div>
 
                     <div className="flex flex-wrap gap-3">
@@ -415,18 +468,13 @@ export default function HomePage({
 
                 </div>
 
-                {/* ==============================
-                    ĐANG TẢI
-                ============================== */}
+                {/* ĐANG TẢI */}
 
                 {loading && (
 
                     <div className="flex flex-col items-center py-20 text-green-700">
 
-                        <Loader2
-                            size={40}
-                            className="animate-spin"
-                        />
+                        <Loader2 size={40} className="animate-spin" />
 
                         <p className="mt-4 font-semibold">
                             Đang tải sản phẩm...
@@ -436,9 +484,7 @@ export default function HomePage({
 
                 )}
 
-                {/* ==============================
-                    LỖI API
-                ============================== */}
+                {/* LỖI API */}
 
                 {!loading && error && (
 
@@ -460,20 +506,15 @@ export default function HomePage({
                             onClick={fetchProducts}
                             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2 text-white transition hover:bg-green-700"
                         >
-
                             <RefreshCw size={18} />
-
                             Thử lại
-
                         </button>
 
                     </div>
 
                 )}
 
-                {/* ==============================
-                    DANH SÁCH SẢN PHẨM
-                ============================== */}
+                {/* SẢN PHẨM */}
 
                 {!loading && !error && filteredProducts.length > 0 && (
 
@@ -486,7 +527,7 @@ export default function HomePage({
                                 className="group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                             >
 
-                                {/* ẢNH SẢN PHẨM */}
+                                {/* ẢNH */}
 
                                 <div className="relative h-64 overflow-hidden bg-gray-100">
 
@@ -505,12 +546,10 @@ export default function HomePage({
                                     ) : (
 
                                         <div className="flex h-full items-center justify-center">
-
                                             <Leaf
                                                 size={60}
                                                 className="text-green-300"
                                             />
-
                                         </div>
 
                                     )}
@@ -520,32 +559,28 @@ export default function HomePage({
                                     {p.cert && (
 
                                         <span className="absolute left-4 top-4 flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-bold text-white shadow">
-
                                             <CheckCircle2 size={14} />
-
                                             {p.cert}
-
                                         </span>
 
                                     )}
 
-                                    {/* TRUY XUẤT */}
+                                    {/* NÚT QR NHỎ */}
 
                                     <button
-                                        onClick={() => handleTraceability(p)}
+                                        type="button"
+                                        onClick={() => handleOpenQr(p)}
                                         disabled={!p.batch || p.batch === 'N/A'}
-                                        className="absolute bottom-4 right-4 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-sm font-semibold text-green-700 shadow transition hover:bg-green-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        title="Xem mã QR và mã lô"
+                                        aria-label={`Xem mã QR ${p.name}`}
+                                        className="absolute bottom-4 right-4 flex items-center justify-center rounded-xl bg-white p-3 text-green-700 shadow-lg transition hover:scale-110 hover:bg-green-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-
-                                        <QrCode size={18} />
-
-                                        Truy xuất
-
+                                        <QrCode size={22} />
                                     </button>
 
                                 </div>
 
-                                {/* THÔNG TIN SẢN PHẨM */}
+                                {/* THÔNG TIN */}
 
                                 <div className="p-5">
 
@@ -564,7 +599,6 @@ export default function HomePage({
                                             ? 'text-red-600'
                                             : 'text-gray-500'
                                     }`}>
-
                                         <Clock size={16} />
 
                                         {p.expDays !== null
@@ -572,7 +606,6 @@ export default function HomePage({
                                                 ? `Hạn sử dụng còn: ${p.expDays} ngày`
                                                 : 'Sản phẩm đã hết hạn'
                                             : 'Chưa có thông tin hạn sử dụng'}
-
                                     </div>
 
                                     {/* GIÁ */}
@@ -580,7 +613,6 @@ export default function HomePage({
                                     <div className="mb-4 flex items-center justify-between">
 
                                         <div>
-
                                             <span className="text-xl font-bold text-green-700">
                                                 {p.price.toLocaleString('vi-VN')}đ
                                             </span>
@@ -588,7 +620,6 @@ export default function HomePage({
                                             <span className="ml-1 text-sm text-gray-500">
                                                 / {p.unit}
                                             </span>
-
                                         </div>
 
                                     </div>
@@ -605,7 +636,7 @@ export default function HomePage({
                                         Tồn kho: {p.current_quantity} {p.unit}
                                     </div>
 
-                                    {/* THÊM GIỎ HÀNG */}
+                                    {/* THÊM GIỎ */}
 
                                     <button
                                         onClick={() => handleAddToCart(p)}
@@ -640,9 +671,7 @@ export default function HomePage({
 
                 )}
 
-                {/* ==============================
-                    KHÔNG CÓ SẢN PHẨM
-                ============================== */}
+                {/* KHÔNG CÓ SẢN PHẨM */}
 
                 {!loading && !error && filteredProducts.length === 0 && (
 
@@ -677,36 +706,176 @@ export default function HomePage({
 
             </section>
 
-            {/* ==============================
-                BONG BÓNG GIỎ HÀNG CỐ ĐỊNH
-            ============================== */}
+            {/* GIỎ HÀNG NỔI */}
 
-            <button
-                onClick={handleGoToCart}
-                className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full bg-green-600 px-5 py-4 text-white shadow-2xl transition-all duration-300 hover:scale-110 hover:bg-green-700"
-                title="Đi đến giỏ hàng"
-                aria-label={`Đi đến giỏ hàng, có ${cartCount} sản phẩm`}
-            >
+            {showFloatingCart && (
 
-                <div className="relative">
+                <button
+                    onClick={handleGoToCart}
+                    className="fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-full bg-green-600 px-5 py-4 text-white shadow-2xl transition-all duration-300 hover:scale-110 hover:bg-green-700 animate-in fade-in slide-in-from-bottom-4"
+                    title="Đi đến giỏ hàng"
+                    aria-label={`Đi đến giỏ hàng, có ${cartCount} sản phẩm`}
+                >
 
-                    <ShoppingCart size={28} />
+                    <div className="relative">
+                        <ShoppingCart size={28} />
 
-                    {/* BADGE SỐ LƯỢNG */}
+                        <span className="absolute -right-3 -top-3 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white ring-2 ring-white">
+                            {cartCount}
+                        </span>
+                    </div>
 
-                    <span className="absolute -right-3 -top-3 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white ring-2 ring-white">
-
-                        {cartCount}
-
+                    <span className="font-bold">
+                        Giỏ hàng
                     </span>
+
+                </button>
+
+            )}
+
+            {/* POPUP QR */}
+
+            {qrProduct && (
+
+                <div
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setQrProduct(null);
+                        }
+                    }}
+                >
+
+                    <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
+
+                        {/* ĐÓNG */}
+
+                        <button
+                            type="button"
+                            onClick={() => setQrProduct(null)}
+                            className="absolute right-4 top-4 rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                            aria-label="Đóng popup QR"
+                        >
+                            <X size={22} />
+                        </button>
+
+                        {/* TIÊU ĐỀ */}
+
+                        <div className="text-center">
+
+                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-100 text-green-700">
+                                <QrCode size={30} />
+                            </div>
+
+                            <h2 className="text-2xl font-bold text-gray-800">
+                                Truy xuất nguồn gốc
+                            </h2>
+
+                            <p className="mt-2 text-sm text-gray-500">
+                                Quét mã QR hoặc xem thông tin nguồn gốc sản phẩm.
+                            </p>
+
+                        </div>
+
+                        {/* TÊN SẢN PHẨM */}
+
+                        <div className="mt-6 rounded-2xl bg-green-50 p-4 text-center">
+
+                            <h3 className="text-lg font-bold text-green-800">
+                                {qrProduct.name}
+                            </h3>
+
+                            <p className="mt-1 text-sm text-green-700">
+                                {qrProduct.category}
+                            </p>
+
+                        </div>
+
+                        {/* QR */}
+
+                        <div className="mt-6 flex justify-center">
+
+                            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+
+                                <img
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(qrProduct.batch)}`}
+                                    alt={`QR truy xuất ${qrProduct.batch}`}
+                                    className="h-64 w-64 max-w-full object-contain"
+                                />
+
+                            </div>
+
+                        </div>
+
+                        {/* MÃ LÔ */}
+
+                        <div className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4">
+
+                            <p className="text-center text-xs font-semibold uppercase tracking-wider text-green-600">
+                                Mã lô sản phẩm
+                            </p>
+
+                            <div className="mt-2 flex items-center justify-center gap-2">
+
+                                <p className="break-all text-center text-lg font-bold text-green-800">
+                                    {qrProduct.batch}
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={handleCopyBatch}
+                                    title="Sao chép mã lô"
+                                    className="shrink-0 rounded-lg p-2 text-green-700 transition hover:bg-green-100"
+                                >
+                                    {copied
+                                        ? <Check size={18} />
+                                        : <Copy size={18} />
+                                    }
+                                </button>
+
+                            </div>
+
+                            {copied && (
+                                <p className="mt-2 text-center text-xs font-medium text-green-700">
+                                    Đã sao chép mã lô!
+                                </p>
+                            )}
+
+                        </div>
+
+                        {/* HƯỚNG DẪN */}
+
+                        <p className="mt-4 text-center text-sm leading-relaxed text-gray-500">
+                            Nhấn nút bên dưới để xem toàn bộ nhật ký
+                            canh tác và thông tin nguồn gốc sản phẩm.
+                        </p>
+
+                        {/* CHUYỂN TRANG */}
+
+                        <button
+                            type="button"
+                            onClick={() => handleTraceability(qrProduct)}
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-3.5 font-bold text-white shadow-lg shadow-green-600/20 transition hover:bg-green-700"
+                        >
+                            Truy xuất nguồn gốc
+                            <ArrowRight size={20} />
+                        </button>
+
+                        {/* ĐÓNG */}
+
+                        <button
+                            type="button"
+                            onClick={() => setQrProduct(null)}
+                            className="mt-3 w-full rounded-xl border border-gray-200 py-3 font-semibold text-gray-600 transition hover:bg-gray-50"
+                        >
+                            Đóng
+                        </button>
+
+                    </div>
 
                 </div>
 
-                <span className="font-bold">
-                    Giỏ hàng
-                </span>
-
-            </button>
+            )}
 
         </div>
     );

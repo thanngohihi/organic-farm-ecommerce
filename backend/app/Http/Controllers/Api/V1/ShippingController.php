@@ -7,7 +7,7 @@ use App\Services\GoogleMapsShippingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class ShippingController
+class ShippingController extends Controller
 {
     /**
      * Service xử lý tính khoảng cách & phí vận chuyển [2]

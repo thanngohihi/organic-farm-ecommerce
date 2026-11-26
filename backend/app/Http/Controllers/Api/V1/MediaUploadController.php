@@ -5,7 +5,7 @@ use App\Services\CloudinaryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class MediaUploadController
+class MediaUploadController extends Controller
 {
     protected CloudinaryService $cloudinaryService;
 
