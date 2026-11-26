@@ -1,10 +1,8 @@
+// Mock API Xác thực dành cho Người 4 & Người 5
 
-// Mock API Xác thực dành cho Người 4 (Frontend Dev 1)
-
-// Mock API đăng nhập
-// Mock API đăng nhập (Hỗ trợ đầy đủ 4 vai trò: Customer, Farm Staff, Sales, Admin)
+// Mock API đăng nhập (Hỗ trợ 4 vai trò mặc định + tài khoản nhân sự do Admin tạo)
 export const mockLogin = async (email, password) => {
-    const MOCK_USERS = {
+    const DEFAULT_USERS = {
         "customer@farm.vn": {
             id: 1,
             name: "Nguyễn Văn Khách",
@@ -37,20 +35,32 @@ export const mockLogin = async (email, password) => {
 
     return new Promise((resolve, reject) => {
         setTimeout(() => {
-            const matchedUser = MOCK_USERS[email?.toLowerCase().trim()];
+            const cleanEmail = email?.toLowerCase().trim();
+            const customUsers = JSON.parse(
+                localStorage.getItem("custom_staff_users") || "{}"
+            );
 
-            if (matchedUser && password === "farm123456") {
+            const matchedDefault = DEFAULT_USERS[cleanEmail];
+            const matchedCustom = customUsers[cleanEmail];
+
+            if (matchedDefault && password === "farm123456") {
                 resolve({
                     status: "success",
-                    token: `mock-jwt-token-${matchedUser.role}-123456`,
-                    user: matchedUser
+                    token: `mock-jwt-token-${matchedDefault.role}-123456`,
+                    user: matchedDefault
+                });
+            } else if (matchedCustom && password === matchedCustom.password) {
+                resolve({
+                    status: "success",
+                    token: `mock-jwt-token-${matchedCustom.role}-${matchedCustom.id}`,
+                    user: matchedCustom
                 });
             } else {
                 reject(
                     new Error("Email hoặc mật khẩu không chính xác!")
                 );
             }
-        }, 500);
+        }, 300);
     });
 };
 
