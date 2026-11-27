@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 
 import axios from 'axios';
+import MediaLightbox, { isVideoMediaUrl } from '../components/MediaLightbox';
 
-const API_URL = 'http://localhost:8000/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 // =====================================
 // NHÃN CÁC GIAI ĐOẠN CANH TÁC
@@ -67,6 +68,7 @@ export default function TraceabilityPage({ initialBatchCode }) {
     const [traceData, setTraceData] = useState(null);
 
     const [error, setError] = useState('');
+    const [previewMedia, setPreviewMedia] = useState(null);
 
     // =====================================
     // TRA CỨU MÃ LÔ
@@ -669,25 +671,44 @@ export default function TraceabilityPage({ initialBatchCode }) {
 
                                                                     if (!url) return null;
 
+                                                                    const isVideo = isVideoMediaUrl(url);
+
+                                                                    if (isVideo) {
+                                                                        return (
+                                                                            <div
+                                                                                key={mediaIndex}
+                                                                                className="overflow-hidden rounded-xl border border-gray-200 bg-black"
+                                                                            >
+                                                                                <video
+                                                                                    src={url}
+                                                                                    controls
+                                                                                    className="h-40 w-full object-cover"
+                                                                                />
+                                                                            </div>
+                                                                        );
+                                                                    }
+
                                                                     return (
-
-                                                                        <a
+                                                                        <button
                                                                             key={mediaIndex}
-                                                                            href={url}
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            className="block overflow-hidden rounded-xl border border-gray-200"
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                setPreviewMedia({
+                                                                                    url,
+                                                                                    isVideo: false,
+                                                                                    title: `Nhật ký ${stageInfo.label}`,
+                                                                                })
+                                                                            }
+                                                                            className="block w-full overflow-hidden rounded-xl border border-gray-200 text-left"
+                                                                            title="Nhấn để xem ảnh lớn"
                                                                         >
-
                                                                             <img
                                                                                 src={url}
                                                                                 alt={`Hình ảnh ${stageInfo.label}`}
                                                                                 loading="lazy"
                                                                                 className="h-40 w-full object-cover transition hover:scale-105"
                                                                             />
-
-                                                                        </a>
-
+                                                                        </button>
                                                                     );
                                                                 }
                                                             )}
@@ -758,6 +779,11 @@ export default function TraceabilityPage({ initialBatchCode }) {
                 )}
 
             </div>
+
+            <MediaLightbox
+                media={previewMedia}
+                onClose={() => setPreviewMedia(null)}
+            />
 
         </div>
 

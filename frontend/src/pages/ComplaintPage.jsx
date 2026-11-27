@@ -1,5 +1,4 @@
-
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import {
   AlertTriangle,
@@ -11,12 +10,14 @@ import {
   Loader2,
   FileText,
 } from 'lucide-react';
+import { getAuthHeaders } from '../services/api';
 
 // ======================================================
 // API CONFIG
 // ======================================================
 
-const API_URL = 'http://localhost:8000/api/v1/complaints';
+const BASE_API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_URL = `${BASE_API}/complaints`;
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -35,10 +36,15 @@ const COMPLAINT_REASONS = {
 // COMPONENT
 // ======================================================
 
-export default function ComplaintPage() {
+export default function ComplaintPage({
+  initialOrderCode = '',
+  ordersList = [],
+  onComplaintSuccess = null,
+  embedded = false,
+}) {
   const fileInputRef = useRef(null);
 
-  const [orderCode, setOrderCode] = useState('');
+  const [orderCode, setOrderCode] = useState(initialOrderCode);
   const [reason, setReason] = useState('rau_dap_nat');
   const [description, setDescription] = useState('');
 
@@ -47,6 +53,14 @@ export default function ComplaintPage() {
 
   const [submitted, setSubmitted] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (initialOrderCode) {
+      setOrderCode(initialOrderCode);
+      setSubmitted(null);
+      setErrorMessage('');
+    }
+  }, [initialOrderCode]);
 
   // ====================================================
   // CHỌN FILE BẰNG CHỨNG
@@ -67,7 +81,7 @@ export default function ComplaintPage() {
 
     for (const file of selectedFiles) {
       if (!file.type.startsWith('image/') &&
-          !file.type.startsWith('video/')) {
+        !file.type.startsWith('video/')) {
         setErrorMessage('Chỉ hỗ trợ tệp hình ảnh và video.');
         continue;
       }
@@ -101,7 +115,7 @@ export default function ComplaintPage() {
   // ====================================================
 
   const resetForm = () => {
-    setOrderCode('');
+    setOrderCode(initialOrderCode || '');
     setReason('rau_dap_nat');
     setDescription('');
     setFiles([]);
@@ -119,7 +133,7 @@ export default function ComplaintPage() {
     setErrorMessage('');
 
     if (!orderCode.trim()) {
-      setErrorMessage('Vui lòng nhập mã đơn hàng.');
+      setErrorMessage('Vui lòng nhập hoặc chọn mã đơn hàng.');
       return;
     }
 
@@ -139,14 +153,10 @@ export default function ComplaintPage() {
       const formData = new FormData();
 
       formData.append('order_code', orderCode.trim());
-
       formData.append('reason', COMPLAINT_REASONS[reason]);
-
       formData.append('description', description.trim());
-
       formData.append('media_count', String(files.length));
 
-      // Gửi các file ảnh/video thực tế
       files.forEach((file) => {
         formData.append('media[]', file);
       });
@@ -154,12 +164,16 @@ export default function ComplaintPage() {
       const response = await axios.post(API_URL, formData, {
         headers: {
           Accept: 'application/json',
+          ...getAuthHeaders(),
         },
         timeout: 30000,
       });
 
-      // Chỉ thông báo thành công khi Backend trả về HTTP thành công
-      setSubmitted(response.data?.data || response.data);
+      const created = response.data?.data || response.data;
+      setSubmitted(created);
+      if (onComplaintSuccess) {
+        onComplaintSuccess(created);
+      }
 
     } catch (error) {
       console.error('Complaint API Error:', error);
@@ -206,13 +220,15 @@ export default function ComplaintPage() {
     }
   };
 
+  const wrapperClass = embedded ? 'w-full' : 'mx-auto max-w-3xl p-4 sm:p-6';
+
   // ====================================================
   // GIAO DIỆN THÀNH CÔNG
   // ====================================================
 
   if (submitted) {
     return (
-      <div className="mx-auto max-w-3xl p-4 sm:p-6">
+      <div className={wrapperClass}>
         <div className="rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-sm">
 
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
@@ -239,7 +255,7 @@ export default function ComplaintPage() {
           )}
 
           <p className="mt-4 text-xs text-slate-500">
-            Mã đơn hàng: {orderCode}
+            Mã đơn hàng: {submitted.order?.order_code || orderCode}
           </p>
 
           <button
@@ -260,7 +276,7 @@ export default function ComplaintPage() {
   // ====================================================
 
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-6">
+    <div className={wrapperClass}>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
@@ -301,6 +317,39 @@ export default function ComplaintPage() {
             <label className="mb-2 block text-sm font-bold text-slate-700">
               Mã đơn hàng cần khiếu nại
             </label>
+
+            {(() => {
+              const eligibleOrders = Array.isArray(ordersList)
+                ? ordersList.filter((ord) =>
+                    ['hoan_thanh', 'da_giao_bu'].includes(ord.order_status)
+                  )
+                : [];
+              if (eligibleOrders.length === 0) {
+                return (
+                  <p className="mb-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Chỉ những đơn hàng đã giao tới nơi và bạn đã nhấn{' '}
+                    <strong>Đã nhận hàng</strong> mới được phép gửi khiếu nại.
+                  </p>
+                );
+              }
+              return (
+                <div className="mb-2.5 flex flex-wrap gap-2">
+                  {eligibleOrders.slice(0, 6).map((ord) => (
+                    <button
+                      key={ord.id || ord.order_code}
+                      type="button"
+                      onClick={() => setOrderCode(ord.order_code)}
+                      className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-semibold transition ${orderCode === ord.order_code
+                          ? 'border-rose-500 bg-rose-50 text-rose-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                      {ord.order_code}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
 
             <input
               type="text"

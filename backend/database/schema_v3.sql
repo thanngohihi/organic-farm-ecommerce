@@ -24,6 +24,7 @@ CREATE TABLE users (
     email VARCHAR(150) NOT NULL UNIQUE,
     phone VARCHAR(20) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
+    avatar_url VARCHAR(500) NULL, -- Link hình ảnh đại diện của khách hàng
     address TEXT NULL,
     latitude DECIMAL(10, 8) NULL, -- Tọa độ tính phí ship Google Maps
     longitude DECIMAL(11, 8) NULL,
@@ -199,6 +200,24 @@ CREATE TABLE complaints (
     updated_at TIMESTAMP NULL
 );
 
+-- 13. Bảng Customer Vouchers: Lưu mã voucher & quà tặng khách hàng đã đổi từ Điểm Loyalty
+CREATE TABLE customer_vouchers (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT UNSIGNED NOT NULL,
+    voucher_template_id TINYINT UNSIGNED NOT NULL,
+    voucher_code VARCHAR(30) NOT NULL UNIQUE,
+    voucher_name VARCHAR(150) NOT NULL,
+    voucher_type ENUM('free_ship', 'percent_discount', 'free_gift') NOT NULL,
+    points_cost INT UNSIGNED NOT NULL,
+    discount_amount DECIMAL(12, 2) DEFAULT 0,
+    gift_product_id BIGINT UNSIGNED NULL,
+    order_id BIGINT UNSIGNED NULL,
+    status ENUM('chua_dung', 'da_dung', 'het_han') DEFAULT 'chua_dung',
+    used_at TIMESTAMP NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
 
 
 -- =============================================================================
@@ -254,3 +273,9 @@ ALTER TABLE complaints
     ADD CONSTRAINT fk_complaints_users FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE,
     ADD CONSTRAINT fk_complaints_handledby FOREIGN KEY (handled_by_sales_id) REFERENCES users(id) ON DELETE SET NULL,
     ADD CONSTRAINT fk_complaints_compensation_order FOREIGN KEY (compensation_order_id) REFERENCES orders(id) ON DELETE SET NULL;
+
+-- Khóa ngoại bảng Customer Vouchers
+ALTER TABLE customer_vouchers
+    ADD CONSTRAINT fk_vouchers_users FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE,
+    ADD CONSTRAINT fk_vouchers_gift_product FOREIGN KEY (gift_product_id) REFERENCES products(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_vouchers_orders FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL;

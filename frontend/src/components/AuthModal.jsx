@@ -13,12 +13,14 @@ import {
     Phone,
     Eye,
     EyeOff,
+    KeyRound,
+    Copy,
 } from 'lucide-react';
 
 import axios from 'axios';
-import { mockLogin } from '../services/mockAuth';
 
-const API_URL = 'http://localhost:8000/api/v1/auth';
+const BASE_API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_URL = `${BASE_API}/auth`;
 
 const INITIAL_FORM_DATA = {
     name: '',
@@ -33,13 +35,18 @@ export default function AuthModal({
     onClose,
     onLoginSuccess,
 }) {
-    const [isLogin, setIsLogin] = useState(true);
+    const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
+    const isLogin = mode === 'login';
+    const isForgot = mode === 'forgot';
     const [loading, setLoading] = useState(false);
 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
     const [loggedInUser, setLoggedInUser] = useState(null);
+    const [forgotIdentifier, setForgotIdentifier] = useState('');
+    const [recoveredAccount, setRecoveredAccount] = useState(null);
+    const [copiedPassword, setCopiedPassword] = useState(false);
 
     const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
@@ -55,11 +62,14 @@ export default function AuthModal({
 
     useEffect(() => {
         if (isOpen) {
-            setIsLogin(true);
+            setMode('login');
             setLoading(false);
             setError('');
             setSuccess('');
             setLoggedInUser(null);
+            setForgotIdentifier('');
+            setRecoveredAccount(null);
+            setCopiedPassword(false);
             setFormData(INITIAL_FORM_DATA);
             setShowPassword(false);
             setShowConfirmPassword(false);
@@ -196,62 +206,29 @@ export default function AuthModal({
     // ==========================================
 
     const handleLogin = async (email, password) => {
-        try {
-            const response = await axios.post(
-                `${API_URL}/login`,
-                {
-                    email,
-                    password,
-                }
+        const response = await axios.post(
+            `${API_URL}/login`,
+            {
+                email,
+                password,
+            }
+        );
+
+        const { user, token } = extractLoginData(response.data);
+
+        if (!user) {
+            throw new Error(
+                'API không trả về thông tin tài khoản.'
             );
-
-            const { user, token } = extractLoginData(response.data);
-
-            if (!user) {
-                throw new Error(
-                    'API không trả về thông tin tài khoản.'
-                );
-            }
-
-            if (!token) {
-                throw new Error(
-                    'API không trả về token đăng nhập. Vui lòng kiểm tra AuthController Laravel.'
-                );
-            }
-
-            saveLoginSession(user, token);
-
-        } catch (err) {
-
-            // Chỉ sử dụng Demo khi không kết nối được backend
-            if (!err.response) {
-                try {
-                    const mockRes = await mockLogin(email, password);
-
-                    if (!mockRes?.user || !mockRes?.token) {
-                        throw new Error(
-                            'Tài khoản demo không trả về đầy đủ thông tin.'
-                        );
-                    }
-
-                    saveLoginSession(
-                        mockRes.user,
-                        mockRes.token
-                    );
-
-                    setSuccess(
-                        'Đăng nhập thành công (Chế độ Demo offline)!'
-                    );
-
-                    return;
-
-                } catch (mockError) {
-                    console.error('Lỗi đăng nhập Demo:', mockError);
-                }
-            }
-
-            throw err;
         }
+
+        if (!token) {
+            throw new Error(
+                'API không trả về token đăng nhập. Vui lòng kiểm tra AuthController Laravel.'
+            );
+        }
+
+        saveLoginSession(user, token);
     };
 
     // ==========================================
@@ -301,7 +278,7 @@ export default function AuthModal({
             'Đăng ký thành công! Vui lòng đăng nhập.'
         );
 
-        setIsLogin(true);
+        setMode('login');
 
         setFormData({
             ...INITIAL_FORM_DATA,
@@ -345,7 +322,23 @@ export default function AuthModal({
         setSuccess('');
 
         try {
-            if (isLogin) {
+            if (isForgot) {
+                const identifier = forgotIdentifier.trim();
+                if (!identifier) {
+                    throw new Error('Vui lòng nhập Số điện thoại hoặc Email.');
+                }
+
+                const response = await axios.post(`${API_URL}/forgot-password`, {
+                    identifier,
+                });
+                const info = response.data?.data;
+                if (!info?.new_password) {
+                    throw new Error('Không nhận được mật khẩu mới từ máy chủ.');
+                }
+                setRecoveredAccount(info);
+                setCopiedPassword(false);
+                setSuccess(response.data?.message || 'Đã cấp lại mật khẩu mới thành công!');
+            } else if (isLogin) {
                 await handleLogin(email, password);
             } else {
                 await handleRegister(
@@ -374,23 +367,35 @@ export default function AuthModal({
     };
 
     // ==========================================
-    // CHUYỂN ĐỔI ĐĂNG NHẬP / ĐĂNG KÝ
+    // CHUYỂN ĐỔI ĐĂNG NHẬP / ĐĂNG KÝ / QUÊN MẬT KHẨU
     // ==========================================
 
-    const handleSwitchMode = () => {
-        setIsLogin(!isLogin);
+    const handleSwitchMode = (nextMode) => {
+        const target =
+            typeof nextMode === 'string'
+                ? nextMode
+                : isLogin
+                    ? 'register'
+                    : 'login';
 
+        setMode(target);
         setError('');
         setSuccess('');
         setLoggedInUser(null);
+        setRecoveredAccount(null);
+        setCopiedPassword(false);
 
         setShowPassword(false);
         setShowConfirmPassword(false);
 
-        setFormData({
-            ...INITIAL_FORM_DATA,
-            email: formData.email,
-        });
+        if (target === 'forgot') {
+            setForgotIdentifier(formData.email || '');
+        } else {
+            setFormData({
+                ...INITIAL_FORM_DATA,
+                email: formData.email,
+            });
+        }
     };
 
     // ==========================================
@@ -431,14 +436,18 @@ export default function AuthModal({
 
                     <h2 className="text-2xl font-bold text-gray-800">
 
-                        {isLogin
-                            ? 'Đăng nhập tài khoản'
-                            : 'Tạo tài khoản mới'}
+                        {isForgot
+                            ? 'Khôi phục mật khẩu'
+                            : isLogin
+                                ? 'Đăng nhập tài khoản'
+                                : 'Tạo tài khoản mới'}
 
                     </h2>
 
                     <p className="mt-2 text-sm text-gray-500">
-                        Trải nghiệm nông sản sạch từ nông trại
+                        {isForgot
+                            ? 'Áp dụng cho Khách hàng, Farm Staff và Sales'
+                            : 'Trải nghiệm nông sản sạch từ nông trại'}
                     </p>
 
                 </div>
@@ -507,7 +516,124 @@ export default function AuthModal({
 
                 {/* FORM */}
 
-                {!loggedInUser && (
+                {!loggedInUser && isForgot && (
+
+                    <div className="space-y-4">
+
+                        {recoveredAccount ? (
+                            <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm">
+                                <div className="flex items-center gap-2 font-bold text-emerald-900">
+                                    <KeyRound size={18} className="text-emerald-600" />
+                                    Thông tin mật khẩu mới của bạn
+                                </div>
+
+                                <div className="space-y-1.5 rounded-xl bg-white p-3.5 text-xs text-slate-600 shadow-sm">
+                                    <div className="flex justify-between gap-2">
+                                        <span>Tài khoản:</span>
+                                        <strong className="text-slate-800">{recoveredAccount.full_name}</strong>
+                                    </div>
+                                    <div className="flex justify-between gap-2">
+                                        <span>Vai trò:</span>
+                                        <strong className="text-emerald-700">{recoveredAccount.role_label}</strong>
+                                    </div>
+                                    <div className="flex justify-between gap-2">
+                                        <span>Email đăng nhập:</span>
+                                        <strong className="font-mono text-slate-800">{recoveredAccount.email}</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                                        <span className="font-semibold text-slate-700">Mật khẩu mới:</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <code className="rounded-lg bg-emerald-100 px-2.5 py-1 font-mono text-sm font-extrabold text-emerald-800">
+                                                {recoveredAccount.new_password}
+                                            </code>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    navigator.clipboard?.writeText(recoveredAccount.new_password);
+                                                    setCopiedPassword(true);
+                                                    setTimeout(() => setCopiedPassword(false), 2000);
+                                                }}
+                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                            >
+                                                <Copy size={12} />
+                                                {copiedPassword ? 'Đã chép' : 'Chép'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const emailVal = recoveredAccount.email || '';
+                                        const passVal = recoveredAccount.new_password || '';
+                                        setMode('login');
+                                        setError('');
+                                        setSuccess('');
+                                        setRecoveredAccount(null);
+                                        setFormData({
+                                            ...INITIAL_FORM_DATA,
+                                            email: emailVal,
+                                            password: passVal,
+                                        });
+                                        setShowPassword(true);
+                                    }}
+                                    className="w-full rounded-xl bg-emerald-600 py-3 font-semibold text-white shadow-md transition hover:bg-emerald-700"
+                                >
+                                    Điền vào Đăng nhập ngay
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                                        Số điện thoại hoặc Email
+                                    </label>
+                                    <div className="relative">
+                                        <Mail
+                                            className="absolute left-3 top-3 text-gray-400"
+                                            size={20}
+                                        />
+                                        <input
+                                            type="text"
+                                            value={forgotIdentifier}
+                                            onChange={(e) => {
+                                                setForgotIdentifier(e.target.value);
+                                                setError('');
+                                                setSuccess('');
+                                            }}
+                                            placeholder="Nhập SĐT hoặc email (@gmail.com, ...)"
+                                            required
+                                            className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                                        />
+                                    </div>
+                                    <p className="mt-1.5 text-xs text-gray-500">
+                                        Hệ thống sẽ cấp lại mật khẩu mới và hiển thị trực tiếp ngay tại đây.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Loader2 size={20} className="animate-spin" />
+                                            Đang kiểm tra tài khoản...
+                                        </>
+                                    ) : (
+                                        'Hiển thị mật khẩu mới'
+                                    )}
+                                </button>
+                            </form>
+                        )}
+
+                    </div>
+
+                )}
+
+                {!loggedInUser && !isForgot && (
 
                     <form
                         onSubmit={handleSubmit}
@@ -616,9 +742,21 @@ export default function AuthModal({
 
                         <div>
 
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
-                                Mật khẩu
-                            </label>
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    Mật khẩu
+                                </label>
+                                {isLogin && (
+                                    <button
+                                        type="button"
+                                        disabled={loading}
+                                        onClick={() => handleSwitchMode('forgot')}
+                                        className="text-xs font-semibold text-emerald-600 transition hover:text-emerald-700 hover:underline"
+                                    >
+                                        Quên mật khẩu?
+                                    </button>
+                                )}
+                            </div>
 
                             <div className="relative">
 
@@ -782,20 +920,26 @@ export default function AuthModal({
 
                     <div className="mt-6 text-center text-sm text-gray-600">
 
-                        {isLogin
-                            ? 'Bạn chưa có tài khoản?'
-                            : 'Bạn đã có tài khoản?'}
+                        {isForgot
+                            ? 'Đã có mật khẩu?'
+                            : isLogin
+                                ? 'Bạn chưa có tài khoản?'
+                                : 'Bạn đã có tài khoản?'}
 
                         <button
                             type="button"
                             disabled={loading}
-                            onClick={handleSwitchMode}
+                            onClick={() =>
+                                handleSwitchMode(isForgot ? 'login' : undefined)
+                            }
                             className="ml-1 font-semibold text-emerald-600 transition hover:text-emerald-700"
                         >
 
-                            {isLogin
-                                ? 'Đăng ký ngay'
-                                : 'Đăng nhập'}
+                            {isForgot
+                                ? 'Quay lại đăng nhập'
+                                : isLogin
+                                    ? 'Đăng ký ngay'
+                                    : 'Đăng nhập'}
 
                         </button>
 

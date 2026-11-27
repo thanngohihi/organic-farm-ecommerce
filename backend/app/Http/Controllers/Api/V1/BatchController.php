@@ -21,7 +21,7 @@ class BatchController extends Controller
     public function index(Request $request)
     {
         $query = Batch::query()
-            ->with(['product:id,name,sku,unit,base_price', 'farmStaff:id,full_name'])
+            ->with(['product:id,category_id,name,sku,unit,base_price,thumbnail_url', 'product.category:id,name', 'farmStaff:id,full_name'])
             ->orderBy('expiry_date', 'asc')
             ->orderBy('id', 'desc');
 
@@ -85,7 +85,7 @@ class BatchController extends Controller
     public function showByQr(string $id)
     {
         $query = Batch::query()->with([
-            'product',
+            'product.category:id,name',
             'farmStaff:id,full_name',
             'farmingLogs' => fn($q) => $q->with('staff:id,full_name')->orderBy('logged_at', 'asc'),
         ]);
@@ -101,9 +101,34 @@ class BatchController extends Controller
             ], 404);
         }
 
+        $harvestDate = $batch->harvest_date instanceof \DateTimeInterface
+            ? $batch->harvest_date->format('Y-m-d')
+            : $batch->harvest_date;
+        $expiryDate = $batch->expiry_date instanceof \DateTimeInterface
+            ? $batch->expiry_date->format('Y-m-d')
+            : $batch->expiry_date;
+
         return response()->json([
             'status' => 'success',
-            'data'   => $batch,
+            'data'   => [
+                'batch' => [
+                    'id'                    => $batch->id,
+                    'batch_code'            => $batch->batch_code,
+                    'product_id'            => $batch->product_id,
+                    'product_name'          => $batch->product?->name,
+                    'category_name'         => $batch->product?->category?->name,
+                    'certification'         => $batch->product?->certification,
+                    'certification_doc_url' => $batch->product?->certification_doc_url,
+                    'harvest_date'          => $harvestDate,
+                    'expiry_date'           => $expiryDate,
+                    'quantity'              => rtrim(rtrim((string) $batch->initial_quantity, '0'), '.') . ' ' . ($batch->product?->unit ?? 'kg'),
+                    'initial_quantity'      => (float) $batch->initial_quantity,
+                    'current_quantity'      => (float) $batch->current_quantity,
+                    'farm_staff_name'       => $batch->farmStaff?->full_name,
+                    'qr_code_url'           => $batch->qr_code_url,
+                ],
+                'farming_logs' => $batch->farmingLogs,
+            ],
         ]);
     }
 

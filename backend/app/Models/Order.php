@@ -19,6 +19,7 @@ class Order extends Model
         'order_code',
         'delivery_address',
         'distance_km',
+        'shipping_type',
         'subtotal',
         'shipping_fee',
         'loyalty_discount',
@@ -44,8 +45,18 @@ class Order extends Model
         return $this->belongsTo(User::class, 'customer_id');
     }
 
+    public function subscription(): BelongsTo
+    {
+        return $this->belongsTo(Subscription::class, 'subscription_id');
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class, 'order_id');
+    }
+
+    public function complaints(): HasMany
+    {
+        return $this->hasMany(Complaint::class, 'order_id');
     }
 }
