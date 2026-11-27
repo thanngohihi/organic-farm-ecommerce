@@ -142,7 +142,7 @@ export default function Footer() {
                     </p>
 
                     <p className="text-sm text-green-300">
-                        Từ nông trại đến bàn ăn
+                        Không làm mà đòi có ăn
                     </p>
 
                     <button

@@ -557,7 +557,7 @@ export default function BrandStory() {
                                 </p>
 
                                 <p className="relative mt-3 text-sm tracking-widest text-emerald-200">
-                                    TỪ NÔNG TRẠI ĐẾN BÀN ĂN
+                                    KHÔNG LÀM MÀ ĐÒI CÓ ĂN
                                 </p>
 
                             </div>
@@ -1045,7 +1045,7 @@ export default function BrandStory() {
 
                         <div className="mt-8 flex items-center justify-center gap-2 text-sm text-emerald-200">
                             <MapPin size={17} />
-                            Từ nông trại đến bàn ăn
+                            Không làm mà đòi có ăn
                         </div>
 
                     </div>

@@ -962,7 +962,7 @@ export default function App() {
                             </span>
 
                             <span className="hidden whitespace-nowrap text-[11px] text-emerald-100 xl:block">
-                                Từ nông trại đến bàn ăn
+                                Không làm mà đòi có ăn
                             </span>
                         </span>
                     </button>
