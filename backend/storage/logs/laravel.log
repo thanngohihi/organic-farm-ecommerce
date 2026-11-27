@@ -745,3 +745,4 @@
 #33 D:/doan/dự án/organic-farm-ecommerce/backend/artisan(9): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
 #34 {main}
 "} 
+[2026-11-27 23:11:15] local.INFO: [MoMo] Chưa cấu hình Sandbox. Mock đơn: ORD-20261127-TJFJZB  
