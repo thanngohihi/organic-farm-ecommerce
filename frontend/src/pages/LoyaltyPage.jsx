@@ -11,10 +11,15 @@ import {
   Coins,
   Loader2,
   AlertCircle,
+  Ticket,
+  ShoppingBag,
 } from 'lucide-react';
+import { getAuthHeaders } from '../services/api';
+import Pagination from '../components/Pagination';
 
-const API_URL = 'http://localhost:8000/api/v1/customer/loyalty';
-const REDEEM_URL = 'http://localhost:8000/api/v1/customer/loyalty/redeem';
+const BASE_API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_URL = `${BASE_API}/customer/loyalty`;
+const REDEEM_URL = `${BASE_API}/customer/loyalty/redeem`;
 
 const VOUCHERS = [
   {
@@ -43,13 +48,20 @@ const INITIAL_DATA = {
   point_value_vnd: 0,
   next_tier: 'Hạng tiếp theo',
   points_needed_next_tier: 0,
+  my_vouchers: [],
   history: [],
 };
 
-export default function LoyaltyPage() {
+const VOUCHERS_PER_PAGE = 4;
+const HISTORY_PER_PAGE = 5;
+
+export default function LoyaltyPage({ onPointsUpdated = null }) {
   const [loyaltyData, setLoyaltyData] = useState(INITIAL_DATA);
   const [vouchers, setVouchers] = useState(VOUCHERS);
+  const [myVouchers, setMyVouchers] = useState([]);
   const [redeemedIds, setRedeemedIds] = useState([]);
+  const [voucherPage, setVoucherPage] = useState(1);
+  const [historyPage, setHistoryPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [redeemingId, setRedeemingId] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -64,7 +76,10 @@ export default function LoyaltyPage() {
       setErrorMessage('');
 
       const response = await axios.get(API_URL, {
-        headers: { Accept: 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          ...getAuthHeaders(),
+        },
       });
 
       const result = response.data?.data || response.data;
@@ -79,8 +94,16 @@ export default function LoyaltyPage() {
         setVouchers(result.vouchers);
       }
 
+      if (Array.isArray(result?.my_vouchers)) {
+        setMyVouchers(result.my_vouchers);
+      }
+
       if (Array.isArray(result?.redeemed_voucher_ids)) {
         setRedeemedIds(result.redeemed_voucher_ids);
+      }
+
+      if (onPointsUpdated && typeof result?.total_points === 'number') {
+        onPointsUpdated(result.total_points);
       }
     } catch (error) {
       console.error('Loyalty API Error:', error);
@@ -127,18 +150,22 @@ export default function LoyaltyPage() {
           voucher_id: voucher.id,
         },
         {
-          headers: { Accept: 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            ...getAuthHeaders(),
+          },
         }
       );
 
       const result = response.data?.data || response.data;
 
       setSuccessMessage(
+        response.data?.message ||
         result?.message ||
         'Đổi voucher thành công!'
       );
 
-      // Lấy lại số điểm và lịch sử chính thức từ Backend
+      // Lấy lại số điểm, túi voucher và lịch sử chính thức từ Backend
       await fetchLoyalty();
 
     } catch (error) {
@@ -412,74 +439,194 @@ export default function LoyaltyPage() {
 
       </div>
 
+      {/* MY REDEEMED VOUCHERS WALLET */}
+
+      {(() => {
+        const totalVoucherPages = Math.max(1, Math.ceil(myVouchers.length / VOUCHERS_PER_PAGE));
+        const safeVoucherPage = Math.min(voucherPage, totalVoucherPages);
+        const paginatedVouchers = myVouchers.slice(
+          (safeVoucherPage - 1) * VOUCHERS_PER_PAGE,
+          safeVoucherPage * VOUCHERS_PER_PAGE
+        );
+
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 font-bold text-slate-800">
+                <Ticket size={20} className="text-emerald-600" />
+                Túi Voucher & Quà Tặng Của Bạn ({myVouchers.length})
+              </h3>
+              <span className="text-xs text-slate-500">
+                {totalVoucherPages > 1
+                  ? `Trang ${safeVoucherPage} / ${totalVoucherPages}`
+                  : 'Chọn áp dụng trực tiếp trong Giỏ hàng & Đặt hàng'}
+              </span>
+            </div>
+
+            {myVouchers.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">
+                Bạn chưa đổi voucher nào. Tích điểm đủ mốc ở trên để đổi ưu đãi hoặc quà tặng 1kg nông sản sạch!
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {paginatedVouchers.map((mv) => {
+                    const isUnused = mv.status === 'chua_dung';
+                    return (
+                      <div
+                        key={mv.id}
+                        className={`flex flex-col justify-between gap-3 rounded-xl border p-4 ${
+                          isUnused
+                            ? 'border-emerald-200 bg-emerald-50/40'
+                            : 'border-slate-200 bg-slate-50 opacity-75'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="rounded-lg bg-white px-2.5 py-1 font-mono text-xs font-extrabold text-emerald-700 ring-1 ring-emerald-200">
+                              {mv.voucher_code}
+                            </span>
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                                isUnused
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {isUnused ? 'Chưa sử dụng' : 'Đã sử dụng'}
+                            </span>
+                          </div>
+
+                          <h4 className="mt-2.5 text-sm font-bold text-slate-800">
+                            {mv.voucher_name}
+                          </h4>
+
+                          {mv.voucher_type === 'free_gift' && (
+                            <p className="mt-1 text-xs text-emerald-700">
+                              Quà tặng: 1 {mv.gift_product?.unit || 'kg'}{' '}
+                              {mv.gift_product?.name || 'Cà Chua Cherry VietGAP'} (0đ khi đặt hàng)
+                            </p>
+                          )}
+
+                          {!isUnused && mv.order?.order_code && (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Đã dùng cho đơn #{mv.order.order_code}
+                            </p>
+                          )}
+                        </div>
+
+                        {isUnused && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                window.dispatchEvent(
+                                  new CustomEvent('organic:navigate', {
+                                    detail: { page: 'cart' },
+                                  })
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                            >
+                              <ShoppingBag size={13} />
+                              Dùng ở Giỏ hàng
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Pagination
+                  currentPage={safeVoucherPage}
+                  totalPages={totalVoucherPages}
+                  onPageChange={setVoucherPage}
+                />
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* HISTORY */}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {(() => {
+        const totalHistoryPages = Math.max(1, Math.ceil(loyaltyData.history.length / HISTORY_PER_PAGE));
+        const safeHistoryPage = Math.min(historyPage, totalHistoryPages);
+        const paginatedHistory = loyaltyData.history.slice(
+          (safeHistoryPage - 1) * HISTORY_PER_PAGE,
+          safeHistoryPage * HISTORY_PER_PAGE
+        );
 
-        <h3 className="mb-4 flex items-center gap-2 font-bold text-slate-800">
-          <History size={20} />
-          Lịch Sử Tích & Sử Dụng Điểm
-        </h3>
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 font-bold text-slate-800">
+                <History size={20} />
+                Lịch Sử Tích & Sử Dụng Điểm ({loyaltyData.history.length})
+              </h3>
+              {totalHistoryPages > 1 && (
+                <span className="text-xs font-medium text-slate-500">
+                  Trang {safeHistoryPage} / {totalHistoryPages}
+                </span>
+              )}
+            </div>
 
-        {loyaltyData.history.length === 0 ? (
+            {loyaltyData.history.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">
+                Chưa có lịch sử giao dịch điểm.
+              </p>
+            ) : (
+              <>
+                <div className="divide-y divide-slate-100">
+                  {paginatedHistory.map((item) => {
+                    const isEarn = item.type === 'earn';
 
-          <p className="py-8 text-center text-sm text-slate-400">
-            Chưa có lịch sử giao dịch điểm.
-          </p>
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 py-4"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div
+                            className={`rounded-xl p-2.5 ${
+                              isEarn
+                                ? 'bg-emerald-50 text-emerald-600'
+                                : 'bg-amber-50 text-amber-600'
+                            }`}
+                          >
+                            {isEarn ? <TrendingUp size={17} /> : <Gift size={17} />}
+                          </div>
 
-        ) : (
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                              {item.title}
+                            </p>
+                            <p className="text-xs text-slate-400">{item.date}</p>
+                          </div>
+                        </div>
 
-          <div className="divide-y divide-slate-100">
-
-            {loyaltyData.history.map((item) => {
-
-              const isEarn = item.type === 'earn';
-
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 py-4"
-                >
-
-                  <div className="flex min-w-0 items-center gap-3">
-
-                    <div className={`rounded-xl p-2.5 ${
-                      isEarn
-                        ? 'bg-emerald-50 text-emerald-600'
-                        : 'bg-amber-50 text-amber-600'
-                    }`}>
-                      {isEarn
-                        ? <TrendingUp size={17} />
-                        : <Gift size={17} />
-                      }
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-800">
-                        {item.title}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {item.date}
-                      </p>
-                    </div>
-
-                  </div>
-
-                  <span className={`shrink-0 font-bold ${
-                    isEarn ? 'text-emerald-600' : 'text-amber-600'
-                  }`}>
-                    {item.points} điểm
-                  </span>
-
+                        <span
+                          className={`shrink-0 font-bold ${
+                            isEarn ? 'text-emerald-600' : 'text-amber-600'
+                          }`}
+                        >
+                          {item.points} điểm
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-
+                <Pagination
+                  currentPage={safeHistoryPage}
+                  totalPages={totalHistoryPages}
+                  onPageChange={setHistoryPage}
+                />
+              </>
+            )}
           </div>
-
-        )}
-
-      </div>
+        );
+      })()}
 
     </div>
   );

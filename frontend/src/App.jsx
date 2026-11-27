@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 
 import {
     Sprout,
@@ -14,8 +15,10 @@ import {
     UserCircle,
     AlertCircle,
     RefreshCw,
-    AlertTriangle,
     Award,
+    User,
+    Receipt,
+    ChevronDown,
 } from 'lucide-react';
 
 import FarmBatchesPage from './pages/dashboard/FarmBatchesPage';
@@ -30,11 +33,15 @@ import BrandStory from './pages/BrandStory';
 import TraceabilityPage from './pages/TraceabilityPage';
 import CartCheckoutPage from './pages/CartCheckoutPage';
 import SubscriptionPage from './pages/SubscriptionPage';
-import ComplaintPage from './pages/ComplaintPage';
 import LoyaltyPage from './pages/LoyaltyPage';
+import ProfilePage from './pages/ProfilePage';
+import TransactionHistoryPage from './pages/TransactionHistoryPage';
 
 import AuthModal from './components/AuthModal';
 import Footer from './components/Footer';
+import { getSavedAuthToken, syncAxiosAuthToken } from './services/api';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 // ======================================================
 // CẤU HÌNH VAI TRÒ
@@ -54,11 +61,30 @@ const ROLE_DEFAULT_PAGE = {
     admin: 'fefo_dashboard',
 };
 
+const VALID_PAGES_BY_ROLE = {
+    customer: [
+        'home',
+        'story',
+        'qr',
+        'cart',
+        'subscription',
+        'complaint',
+        'transactions',
+        'loyalty',
+        'profile',
+    ],
+    farm_staff: ['farm_batches', 'farm_logs', 'profile'],
+    sales: ['sales_orders', 'sales_complaints', 'profile'],
+    admin: ['fefo_dashboard', 'admin_accounts', 'profile'],
+};
+
 const LOGIN_REQUIRED_MESSAGES = {
     cart: 'Bạn cần đăng nhập trước khi xem giỏ hàng hoặc tiến hành thanh toán.',
     subscription: 'Vui lòng đăng nhập để đăng ký gói nông sản định kỳ.',
     complaint: 'Bạn cần đăng nhập để gửi khiếu nại và theo dõi yêu cầu.',
     loyalty: 'Đăng nhập để xem điểm thưởng Loyalty của bạn.',
+    profile: 'Vui lòng đăng nhập để xem và chỉnh sửa thông tin cá nhân.',
+    transactions: 'Vui lòng đăng nhập để xem lịch sử giao dịch của bạn.',
 };
 
 // ======================================================
@@ -117,8 +143,6 @@ const NAV_ITEMS = {
         { id: 'qr', label: 'Truy xuất nguồn gốc', icon: QrCode },
         { id: 'cart', label: 'Giỏ hàng & Đặt hàng', icon: ShoppingBag },
         { id: 'subscription', label: 'Gói nông sản định kỳ', icon: RefreshCw },
-        { id: 'complaint', label: 'Gửi khiếu nại', icon: AlertTriangle },
-        { id: 'loyalty', label: 'Điểm Loyalty', icon: Award },
     ],
 
     farm_staff: [
@@ -157,15 +181,27 @@ export default function App() {
         }
     });
 
-    // Trang mặc định theo vai trò đã đăng nhập
+    // Giữ nguyên trang hiện tại khi load lại trình duyệt (F5)
     const [activePage, setActivePage] = useState(() => {
         const user = getSavedUser();
         const role = getUserRole(user);
+        const savedPage = localStorage.getItem('organic_active_page');
+        const allowed = VALID_PAGES_BY_ROLE[role] || [];
+
+        if (
+            savedPage &&
+            allowed.includes(savedPage) &&
+            (!LOGIN_REQUIRED_MESSAGES[savedPage] || user)
+        ) {
+            return savedPage;
+        }
 
         return ROLE_DEFAULT_PAGE[role] || 'home';
     });
 
-    const [qrBatchCode, setQrBatchCode] = useState('');
+    const [qrBatchCode, setQrBatchCode] = useState(
+        () => localStorage.getItem('organic_qr_batch_code') || ''
+    );
 
     const [authOpen, setAuthOpen] = useState(false);
 
@@ -175,7 +211,56 @@ export default function App() {
 
     const [visitedTabs, setVisitedTabs] = useState({});
 
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+    const [headerAvatarError, setHeaderAvatarError] = useState(false);
+
     const activeRole = getUserRole(currentUser);
+
+    useEffect(() => {
+        setHeaderAvatarError(false);
+    }, [currentUser?.avatar_url]);
+
+    // ==================================================
+    // ĐỒNG BỘ TOKEN & LÀM MỚI THÔNG TIN USER TỪ BACKEND
+    // ==================================================
+
+    useEffect(() => {
+        const token = getSavedAuthToken();
+        if (!token) return;
+
+        syncAxiosAuthToken(token);
+
+        if (token.startsWith('mock-jwt-token-')) return;
+
+        axios
+            .get(`${API_URL}/auth/me`, {
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+            })
+            .then((res) => {
+                const freshUser = res.data?.data?.user;
+                if (freshUser) {
+                    setCurrentUser(freshUser);
+                    localStorage.setItem(
+                        'organic_current_user',
+                        JSON.stringify(freshUser)
+                    );
+                }
+            })
+            .catch((err) => {
+                if (err?.response?.status === 401) {
+                    syncAxiosAuthToken(null);
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user_token');
+                    localStorage.removeItem('organic_current_user');
+                    setCurrentUser(null);
+                }
+            });
+    }, []);
 
     // ==================================================
     // LƯU GIỎ HÀNG
@@ -200,6 +285,20 @@ export default function App() {
             );
         }
     }, [currentUser]);
+
+    useEffect(() => {
+        if (activePage) {
+            localStorage.setItem('organic_active_page', activePage);
+        }
+    }, [activePage]);
+
+    useEffect(() => {
+        if (qrBatchCode) {
+            localStorage.setItem('organic_qr_batch_code', qrBatchCode);
+        } else {
+            localStorage.removeItem('organic_qr_batch_code');
+        }
+    }, [qrBatchCode]);
 
     // ==================================================
     // CACHE TAB NHÂN VIÊN
@@ -351,10 +450,12 @@ export default function App() {
 
     useEffect(() => {
         const path = window.location.pathname;
-        const prefix = '/traceability/';
+        const matchedPrefix = ['/traceability/', '/trace/'].find((p) =>
+            path.startsWith(p)
+        );
 
-        if (path.startsWith(prefix)) {
-            const codeFromUrl = path.slice(prefix.length).split('/')[0];
+        if (matchedPrefix) {
+            const codeFromUrl = path.slice(matchedPrefix.length).split('/')[0];
 
             if (codeFromUrl) {
                 try {
@@ -388,6 +489,11 @@ export default function App() {
             return;
         }
 
+        const token = getSavedAuthToken();
+        if (token) {
+            syncAxiosAuthToken(token);
+        }
+
         // Lưu user
         localStorage.setItem(
             'organic_current_user',
@@ -407,7 +513,17 @@ export default function App() {
         setAuthOpen(false);
         setLoginNotice(null);
         setPendingPage(null);
+        setUserMenuOpen(false);
         setVisitedTabs({});
+    };
+
+    const handleUserUpdated = (updatedUser) => {
+        if (!updatedUser) return;
+        setCurrentUser(updatedUser);
+        localStorage.setItem(
+            'organic_current_user',
+            JSON.stringify(updatedUser)
+        );
     };
 
     // ==================================================
@@ -415,6 +531,24 @@ export default function App() {
     // ==================================================
 
     const handleLogout = () => {
+        const token = getSavedAuthToken();
+        if (token && !token.startsWith('mock-jwt-token-')) {
+            axios
+                .post(
+                    `${API_URL}/auth/logout`,
+                    {},
+                    {
+                        headers: {
+                            Accept: 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                )
+                .catch(() => {});
+        }
+
+        syncAxiosAuthToken(null);
+
         localStorage.removeItem('access_token');
         localStorage.removeItem('token');
         localStorage.removeItem('user_token');
@@ -426,9 +560,12 @@ export default function App() {
         setLoginNotice(null);
         setPendingPage(null);
         setQrBatchCode('');
+        setUserMenuOpen(false);
         setVisitedTabs({});
 
         localStorage.removeItem('organic_cart_items');
+        localStorage.removeItem('organic_active_page');
+        localStorage.removeItem('organic_qr_batch_code');
 
         setActivePage('home');
 
@@ -530,6 +667,7 @@ export default function App() {
                     <CartCheckoutPage
                         cartItems={cartItems}
                         setCartItems={setCartItems}
+                        currentUser={currentUser}
                     />
                 );
 
@@ -538,21 +676,51 @@ export default function App() {
                     return renderLoginRequiredFallback('subscription');
                 }
 
-                return <SubscriptionPage />;
+                return <SubscriptionPage currentUser={currentUser} />;
 
             case 'complaint':
                 if (!currentUser) {
                     return renderLoginRequiredFallback('complaint');
                 }
 
-                return <ComplaintPage />;
+                return <TransactionHistoryPage initialTab="complaint" />;
+
+            case 'transactions':
+                if (!currentUser) {
+                    return renderLoginRequiredFallback('transactions');
+                }
+
+                return <TransactionHistoryPage initialTab="orders" />;
+
+            case 'profile':
+                if (!currentUser) {
+                    return renderLoginRequiredFallback('profile');
+                }
+
+                return (
+                    <ProfilePage
+                        currentUser={currentUser}
+                        onUserUpdated={handleUserUpdated}
+                        canEditAvatar
+                        onNavigate={navigatePage}
+                    />
+                );
 
             case 'loyalty':
                 if (!currentUser) {
                     return renderLoginRequiredFallback('loyalty');
                 }
 
-                return <LoyaltyPage />;
+                return (
+                    <LoyaltyPage
+                        onPointsUpdated={(pts) =>
+                            handleUserUpdated({
+                                ...currentUser,
+                                loyalty_points: pts,
+                            })
+                        }
+                    />
+                );
 
             default:
                 return (
@@ -571,6 +739,16 @@ export default function App() {
     // ==================================================
 
     const renderStaffPage = () => {
+        if (activePage === 'profile') {
+            return (
+                <ProfilePage
+                    currentUser={currentUser}
+                    onUserUpdated={handleUserUpdated}
+                    canEditAvatar={false}
+                />
+            );
+        }
+
         const isLoaded = (role, page) =>
             (activeRole === role && activePage === page) ||
             Boolean(visitedTabs[`${role}:${page}`]);
@@ -713,37 +891,148 @@ export default function App() {
                     <div className="flex items-center gap-3">
                         {currentUser ? (
                             <>
-                                <span className="hidden items-center gap-2 text-sm text-emerald-100 sm:flex">
-                                    <UserCircle size={18} />
+                                {/* Hover / Click Tên người dùng để mở Frame Menu */}
+                                <div
+                                    className="relative"
+                                    onMouseEnter={() => setUserMenuOpen(true)}
+                                    onMouseLeave={() => setUserMenuOpen(false)}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setUserMenuOpen((prev) => !prev)}
+                                        className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-700/80"
+                                    >
+                                        {activeRole === 'customer' &&
+                                        currentUser.avatar_url &&
+                                        !headerAvatarError ? (
+                                            <img
+                                                src={currentUser.avatar_url}
+                                                alt={currentUser.full_name || 'Avatar'}
+                                                onError={() => setHeaderAvatarError(true)}
+                                                className="h-8 w-8 rounded-full border-2 border-emerald-300 object-cover"
+                                            />
+                                        ) : (
+                                            <UserCircle size={22} className="shrink-0 text-emerald-200" />
+                                        )}
 
-                                    {currentUser.full_name ||
-                                        currentUser.name ||
-                                        currentUser.email ||
-                                        'Tài khoản'}
-
-                                    {activeRole === 'customer' && (
-                                        <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-200">
-                                            <Award size={14} />
-
-                                            {Number(
-                                                currentUser.loyalty_points ??
-                                                currentUser.loyaltyPoints ??
-                                                currentUser.points ??
-                                                currentUser.loyalty?.points ??
-                                                0
-                                            ).toLocaleString('vi-VN')} điểm
+                                        <span className="max-w-[140px] truncate sm:max-w-[200px]">
+                                            {currentUser.full_name ||
+                                                currentUser.name ||
+                                                currentUser.email ||
+                                                'Tài khoản'}
                                         </span>
-                                    )}
-                                </span>
 
-                                <span className="hidden rounded-lg bg-emerald-900 px-3 py-2 text-xs font-semibold text-emerald-200 sm:block">
-                                    {ROLE_LABELS[activeRole]}
-                                </span>
+                                        <ChevronDown
+                                            size={15}
+                                            className={`shrink-0 text-emerald-200 transition-transform ${
+                                                userMenuOpen ? 'rotate-180' : ''
+                                            }`}
+                                        />
+                                    </button>
+
+                                    {/* Frame hiển thị khi trỏ chuột lên Tên người dùng */}
+                                    {userMenuOpen && (
+                                        <div className="absolute right-0 top-full z-50 w-64 pt-2">
+                                            <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-white p-2 text-slate-700 shadow-2xl">
+                                                <div className="mb-1 border-b border-slate-100 px-3 py-2">
+                                                    <p className="truncate text-sm font-bold text-slate-800">
+                                                        {currentUser.full_name ||
+                                                            currentUser.name ||
+                                                            'Tài khoản'}
+                                                    </p>
+                                                    <p className="truncate text-xs text-slate-400">
+                                                        {currentUser.email}
+                                                    </p>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setUserMenuOpen(false);
+                                                        navigatePage('profile');
+                                                    }}
+                                                    className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                                                        activePage === 'profile'
+                                                            ? 'bg-emerald-50 text-emerald-700'
+                                                            : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'
+                                                    }`}
+                                                >
+                                                    <User size={17} className="text-emerald-600" />
+                                                    Thông tin cá nhân
+                                                </button>
+
+                                                {activeRole === 'customer' && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setUserMenuOpen(false);
+                                                                navigatePage('transactions');
+                                                            }}
+                                                            className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                                                                activePage === 'transactions'
+                                                                    ? 'bg-emerald-50 text-emerald-700'
+                                                                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'
+                                                            }`}
+                                                        >
+                                                            <Receipt size={17} className="text-emerald-600" />
+                                                            Lịch sử giao dịch
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setUserMenuOpen(false);
+                                                                navigatePage('loyalty');
+                                                            }}
+                                                            className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                                                                activePage === 'loyalty'
+                                                                    ? 'bg-amber-50 text-amber-700'
+                                                                    : 'text-slate-700 hover:bg-amber-50 hover:text-amber-700'
+                                                            }`}
+                                                        >
+                                                            <span className="flex items-center gap-2.5">
+                                                                <Award size={17} className="text-amber-500" />
+                                                                Điểm Loyalty
+                                                            </span>
+                                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">
+                                                                {Number(
+                                                                    currentUser.loyalty_points ??
+                                                                    currentUser.loyaltyPoints ??
+                                                                    currentUser.points ??
+                                                                    currentUser.loyalty?.points ??
+                                                                    0
+                                                                ).toLocaleString('vi-VN')}
+                                                            </span>
+                                                        </button>
+                                                    </>
+                                                )}
+
+                                                <div className="mt-1 border-t border-slate-100 pt-1 sm:hidden">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleLogout}
+                                                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                                                    >
+                                                        <LogOut size={17} />
+                                                        Đăng xuất
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {activeRole !== 'customer' && (
+                                    <span className="hidden rounded-lg bg-emerald-900 px-3 py-2 text-xs font-semibold text-emerald-200 sm:block">
+                                        {ROLE_LABELS[activeRole]}
+                                    </span>
+                                )}
 
                                 <button
                                     type="button"
                                     onClick={handleLogout}
-                                    className="flex items-center gap-2 rounded-lg border border-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 sm:text-sm"
+                                    className="hidden items-center gap-2 rounded-lg border border-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 sm:flex sm:text-sm"
                                 >
                                     <LogOut size={16} />
                                     Đăng xuất

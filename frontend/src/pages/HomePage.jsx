@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
     Search,
@@ -19,7 +19,7 @@ import {
 
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 export default function HomePage({
     addToCart,
@@ -41,6 +41,11 @@ export default function HomePage({
     // Popup QR
     const [qrProduct, setQrProduct] = useState(null);
     const [copied, setCopied] = useState(false);
+
+    // Ref cho thanh tìm kiếm để lăn chuột xuống/lên tự dừng mượt mà
+    const searchSectionRef = useRef(null);
+    const isAutoScrollingRef = useRef(false);
+    const scrollRafRef = useRef(null);
 
     // =====================================
     // LẤY SẢN PHẨM TỪ LARAVEL API
@@ -83,11 +88,23 @@ export default function HomePage({
                         )
                         : null;
 
+                const basePrice = Number(product.price || 0);
+                const isFlashSale = Boolean(product.is_flash_sale);
+                const discountPercent = Number(product.discount_percent || 0);
+                const effectivePrice =
+                    isFlashSale && Number(product.sale_price) > 0
+                        ? Number(product.sale_price)
+                        : basePrice;
+
                 return {
                     ...product,
                     id: product.id,
                     name: product.name,
-                    price: Number(product.price || 0),
+                    price: effectivePrice,
+                    base_price: basePrice,
+                    sale_price: effectivePrice,
+                    is_flash_sale: isFlashSale,
+                    discount_percent: discountPercent,
                     unit: product.unit || 'kg',
                     category: product.category_name || 'Khác',
                     cert: product.certification || '',
@@ -151,6 +168,95 @@ export default function HomePage({
         };
 
     }, []);
+
+    // =====================================
+    // LĂN CHUỘT 1 LẦN TỰ CUỘN CHẬM XUỐNG THANH TÌM KIẾM & LÊN ĐẦU TRANG
+    // =====================================
+
+    useEffect(() => {
+        const stopScrollAnimation = () => {
+            if (scrollRafRef.current !== null) {
+                cancelAnimationFrame(scrollRafRef.current);
+                scrollRafRef.current = null;
+            }
+            isAutoScrollingRef.current = false;
+        };
+
+        const animateScrollTo = (targetY, duration = 1200) => {
+            stopScrollAnimation();
+            const startY = window.scrollY;
+            const distance = targetY - startY;
+            if (Math.abs(distance) < 2) return;
+
+            isAutoScrollingRef.current = true;
+            const startTime = performance.now();
+
+            const easeInOutCubic = (t) =>
+                t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+            const step = (now) => {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = easeInOutCubic(progress);
+
+                window.scrollTo({
+                    top: Math.round(startY + distance * eased),
+                    behavior: 'auto',
+                });
+
+                if (progress < 1) {
+                    scrollRafRef.current = requestAnimationFrame(step);
+                } else {
+                    window.scrollTo({ top: targetY, behavior: 'auto' });
+                    scrollRafRef.current = null;
+                    isAutoScrollingRef.current = false;
+                }
+            };
+
+            scrollRafRef.current = requestAnimationFrame(step);
+        };
+
+        const handleWheel = (e) => {
+            if (qrProduct) {
+                stopScrollAnimation();
+                return;
+            }
+            if (e.deltaY === 0) return;
+
+            const searchEl = searchSectionRef.current;
+            if (!searchEl) return;
+
+            const headerEl = document.querySelector('header');
+            const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 72;
+            const searchTop = window.scrollY + searchEl.getBoundingClientRect().top;
+            // Dừng ngay phía trên thanh tìm kiếm một khoảng thoáng (~24px dưới header)
+            const targetTop = Math.max(0, Math.round(searchTop - headerHeight - 24));
+
+            if (isAutoScrollingRef.current) {
+                e.preventDefault();
+                return;
+            }
+
+            // Lăn xuống khi đang ở vùng banner đầu trang -> cuộn chậm tới ngay trên thanh tìm kiếm
+            if (e.deltaY > 0 && window.scrollY < targetTop - 16) {
+                e.preventDefault();
+                animateScrollTo(targetTop, 1200);
+                return;
+            }
+
+            // Lăn lên khi đang ở vùng quanh thanh tìm kiếm trở lên -> cuộn chậm về đầu trang (0)
+            if (e.deltaY < 0 && window.scrollY > 8 && window.scrollY <= targetTop + 140) {
+                e.preventDefault();
+                animateScrollTo(0, 1200);
+            }
+        };
+
+        window.addEventListener('wheel', handleWheel, { passive: false });
+        return () => {
+            window.removeEventListener('wheel', handleWheel);
+            stopScrollAnimation();
+        };
+    }, [qrProduct]);
 
     // =====================================
     // DANH MỤC
@@ -375,7 +481,7 @@ export default function HomePage({
 
             {/* TÌM KIẾM */}
 
-            <section className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
+            <section ref={searchSectionRef} className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
 
                 <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-lg">
 
@@ -428,7 +534,7 @@ export default function HomePage({
                         </h2>
 
                         <p className="mt-2 text-gray-500">
-                            Nông sản tươi ngon được lấy trực tiếp từ cơ sở dữ liệu.
+                            Nông sản tươi ngon được lấy trực tiếp từ nông trại.
                         </p>
 
                     </div>
@@ -554,7 +660,7 @@ export default function HomePage({
 
                                     )}
 
-                                    {/* CHỨNG NHẬN */}
+                                    {/* CHỨNG NHẬN & FLASH SALE */}
 
                                     {p.cert && (
 
@@ -563,6 +669,12 @@ export default function HomePage({
                                             {p.cert}
                                         </span>
 
+                                    )}
+
+                                    {p.is_flash_sale && p.discount_percent > 0 && (
+                                        <span className="absolute right-4 top-4 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow">
+                                            🔥 Flash Sale -{p.discount_percent}%
+                                        </span>
                                     )}
 
                                     {/* NÚT QR NHỎ */}
@@ -613,13 +725,19 @@ export default function HomePage({
                                     <div className="mb-4 flex items-center justify-between">
 
                                         <div>
-                                            <span className="text-xl font-bold text-green-700">
+                                            <span className={`text-xl font-bold ${p.is_flash_sale ? 'text-rose-600' : 'text-green-700'}`}>
                                                 {p.price.toLocaleString('vi-VN')}đ
                                             </span>
 
                                             <span className="ml-1 text-sm text-gray-500">
                                                 / {p.unit}
                                             </span>
+
+                                            {p.is_flash_sale && p.base_price > p.price && (
+                                                <span className="ml-2 text-xs text-gray-400 line-through">
+                                                    {p.base_price.toLocaleString('vi-VN')}đ
+                                                </span>
+                                            )}
                                         </div>
 
                                     </div>
@@ -738,7 +856,7 @@ export default function HomePage({
             {qrProduct && (
 
                 <div
-                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm"
                     onClick={(e) => {
                         if (e.target === e.currentTarget) {
                             setQrProduct(null);
@@ -746,32 +864,32 @@ export default function HomePage({
                     }}
                 >
 
-                    <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
+                    <div className="relative w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
 
                         {/* ĐÓNG */}
 
                         <button
                             type="button"
                             onClick={() => setQrProduct(null)}
-                            className="absolute right-4 top-4 rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                            className="absolute right-3.5 top-3.5 rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
                             aria-label="Đóng popup QR"
                         >
-                            <X size={22} />
+                            <X size={20} />
                         </button>
 
                         {/* TIÊU ĐỀ */}
 
                         <div className="text-center">
 
-                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-100 text-green-700">
-                                <QrCode size={30} />
+                            <div className="mx-auto mb-2.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-green-100 text-green-700">
+                                <QrCode size={24} />
                             </div>
 
-                            <h2 className="text-2xl font-bold text-gray-800">
+                            <h2 className="text-xl font-bold text-gray-800">
                                 Truy xuất nguồn gốc
                             </h2>
 
-                            <p className="mt-2 text-sm text-gray-500">
+                            <p className="mt-1 text-xs text-gray-500">
                                 Quét mã QR hoặc xem thông tin nguồn gốc sản phẩm.
                             </p>
 
@@ -779,13 +897,13 @@ export default function HomePage({
 
                         {/* TÊN SẢN PHẨM */}
 
-                        <div className="mt-6 rounded-2xl bg-green-50 p-4 text-center">
+                        <div className="mt-3.5 rounded-2xl bg-green-50 px-4 py-2.5 text-center">
 
-                            <h3 className="text-lg font-bold text-green-800">
+                            <h3 className="text-base font-bold text-green-800">
                                 {qrProduct.name}
                             </h3>
 
-                            <p className="mt-1 text-sm text-green-700">
+                            <p className="mt-0.5 text-xs text-green-700">
                                 {qrProduct.category}
                             </p>
 
@@ -793,14 +911,14 @@ export default function HomePage({
 
                         {/* QR */}
 
-                        <div className="mt-6 flex justify-center">
+                        <div className="mt-3.5 flex justify-center">
 
-                            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                            <div className="rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm">
 
                                 <img
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(qrProduct.batch)}`}
+                                    src={qrProduct.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(qrProduct.batch)}`}
                                     alt={`QR truy xuất ${qrProduct.batch}`}
-                                    className="h-64 w-64 max-w-full object-contain"
+                                    className="h-36 w-36 object-contain"
                                 />
 
                             </div>
@@ -809,15 +927,15 @@ export default function HomePage({
 
                         {/* MÃ LÔ */}
 
-                        <div className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4">
+                        <div className="mt-3.5 rounded-2xl border border-green-200 bg-green-50 px-4 py-2.5">
 
-                            <p className="text-center text-xs font-semibold uppercase tracking-wider text-green-600">
+                            <p className="text-center text-[11px] font-semibold uppercase tracking-wider text-green-600">
                                 Mã lô sản phẩm
                             </p>
 
-                            <div className="mt-2 flex items-center justify-center gap-2">
+                            <div className="mt-1 flex items-center justify-center gap-2">
 
-                                <p className="break-all text-center text-lg font-bold text-green-800">
+                                <p className="break-all text-center text-base font-bold text-green-800">
                                     {qrProduct.batch}
                                 </p>
 
@@ -825,18 +943,18 @@ export default function HomePage({
                                     type="button"
                                     onClick={handleCopyBatch}
                                     title="Sao chép mã lô"
-                                    className="shrink-0 rounded-lg p-2 text-green-700 transition hover:bg-green-100"
+                                    className="shrink-0 rounded-lg p-1.5 text-green-700 transition hover:bg-green-100"
                                 >
                                     {copied
-                                        ? <Check size={18} />
-                                        : <Copy size={18} />
+                                        ? <Check size={16} />
+                                        : <Copy size={16} />
                                     }
                                 </button>
 
                             </div>
 
                             {copied && (
-                                <p className="mt-2 text-center text-xs font-medium text-green-700">
+                                <p className="mt-1 text-center text-xs font-medium text-green-700">
                                     Đã sao chép mã lô!
                                 </p>
                             )}
@@ -845,7 +963,7 @@ export default function HomePage({
 
                         {/* HƯỚNG DẪN */}
 
-                        <p className="mt-4 text-center text-sm leading-relaxed text-gray-500">
+                        <p className="mt-3 text-center text-xs leading-relaxed text-gray-500">
                             Nhấn nút bên dưới để xem toàn bộ nhật ký
                             canh tác và thông tin nguồn gốc sản phẩm.
                         </p>
@@ -855,10 +973,10 @@ export default function HomePage({
                         <button
                             type="button"
                             onClick={() => handleTraceability(qrProduct)}
-                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-3.5 font-bold text-white shadow-lg shadow-green-600/20 transition hover:bg-green-700"
+                            className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 py-2.5 text-sm font-bold text-white shadow-lg shadow-green-600/20 transition hover:bg-green-700"
                         >
                             Truy xuất nguồn gốc
-                            <ArrowRight size={20} />
+                            <ArrowRight size={18} />
                         </button>
 
                         {/* ĐÓNG */}
@@ -866,7 +984,7 @@ export default function HomePage({
                         <button
                             type="button"
                             onClick={() => setQrProduct(null)}
-                            className="mt-3 w-full rounded-xl border border-gray-200 py-3 font-semibold text-gray-600 transition hover:bg-gray-50"
+                            className="mt-2 w-full rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
                         >
                             Đóng
                         </button>

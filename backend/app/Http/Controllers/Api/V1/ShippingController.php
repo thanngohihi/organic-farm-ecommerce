@@ -9,49 +9,62 @@ use Illuminate\Http\Request;
 
 class ShippingController extends Controller
 {
-    /**
-     * Service xử lý tính khoảng cách & phí vận chuyển [2]
-     *
-     * @var GoogleMapsShippingService
-     */
-    protected $shippingService;
+    public function __construct(
+        protected GoogleMapsShippingService $shippingService
+    ) {}
 
     /**
-     * Inject GoogleMapsShippingService vào Controller [2]
+     * GET /api/v1/shipping/farm-location
+     * Trả về tọa độ & địa chỉ mặc định của Doanh nghiệp / Nông trại từ .env
      */
-    public function __construct(GoogleMapsShippingService $shippingService)
+    public function farmLocation(): JsonResponse
     {
-        $this->shippingService = $shippingService;
+        return response()->json([
+            'status' => 'success',
+            'data'   => $this->shippingService->getFarmLocation(),
+        ], 200);
     }
 
     /**
-     * API: Tính khoảng cách (km) và Phí vận chuyển động từ Nông trại Củ Chi [3]
-     * Endpoint: POST /api/v1/shipping/calculate-km [3]
+     * API: Tính khoảng cách (km) và Phí vận chuyển động từ Nông trại Củ Chi
+     * Endpoint: POST /api/v1/shipping/calculate-km
      */
     public function calculateKm(Request $request): JsonResponse
     {
-        // 1. Validate dữ liệu gửi lên từ Frontend (Người 4) [3]
         $validated = $request->validate([
             'customer_address' => ['required', 'string', 'max:500'],
-            'latitude'         => ['nullable', 'numeric'],
-            'longitude'        => ['nullable', 'numeric'],
+            'latitude'         => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude'        => ['nullable', 'numeric', 'between:-180,180'],
+            'shipping_type'    => ['nullable', 'in:binh_thuong,hoa_toc'],
         ], [
             'customer_address.required' => 'Vui lòng nhập địa chỉ giao hàng của bạn.',
             'customer_address.string'   => 'Địa chỉ giao hàng phải là dạng chuỗi ký tự.',
             'customer_address.max'      => 'Địa chỉ giao hàng không được vượt quá 500 ký tự.',
+            'shipping_type.in'          => 'Hình thức giao hàng chỉ hỗ trợ bình thường hoặc hỏa tốc.',
         ]);
 
-        // 2. Gọi hàm tính phí vận chuyển từ GoogleMapsShippingService [2]
-        $result = $this->shippingService->calculateShippingFee($validated['customer_address']);
+        $lat = isset($validated['latitude']) ? (float) $validated['latitude'] : null;
+        $lng = isset($validated['longitude']) ? (float) $validated['longitude'] : null;
+        $shippingType = $validated['shipping_type'] ?? 'binh_thuong';
 
-        // 3. Trả về Response JSON theo đúng chuẩn Postman Collection API Specification [4]
+        $result = $this->shippingService->calculateShippingFee(
+            $validated['customer_address'],
+            $lat,
+            $lng,
+            $shippingType
+        );
+
         return response()->json([
             'status' => 'success',
             'data'   => [
-                'distance_km'   => $result['distance_km'],
-                'duration_text' => '35 phút',
-                'shipping_fee'  => $result['shipping_fee'],
-                'farm_origin'   => $result['origin'],
+                'distance_km'        => $result['distance_km'],
+                'shipping_type'      => $result['shipping_type'],
+                'duration_text'      => $result['duration_text'],
+                'estimated_delivery' => $result['estimated_delivery'],
+                'shipping_method'    => $result['shipping_method'],
+                'shipping_fee'       => $result['shipping_fee'],
+                'farm_origin'        => $result['origin'],
+                'calculation_mode'   => $result['calculation_mode'],
             ],
         ], 200);
     }

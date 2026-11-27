@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ShoppingBag,
   MapPin,
@@ -9,115 +9,30 @@ import {
   Plus,
   Minus,
   Trash2,
-  Clock,
-  Package,
-  RefreshCw,
   Loader2,
-  ClipboardList,
+  Ticket,
+  Gift,
+  CreditCard,
+  ExternalLink,
+  Clock,
+  RefreshCw,
   XCircle,
-  LocateFixed,
-  ChevronDown,
-  ChevronUp
+  Flame
 } from 'lucide-react';
 
 import axios from 'axios';
+import { getAuthHeaders } from '../services/api';
+import DeliveryAddressMap from '../components/DeliveryAddressMap';
 
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  useMapEvents,
-  useMap
-} from 'react-leaflet';
-
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-const API_URL = 'http://localhost:8000/api/v1';
-
-// Vị trí mặc định: TP. Hồ Chí Minh
-const DEFAULT_CENTER = [10.762622, 106.660172];
-
-// Sửa lỗi Marker Leaflet
-delete L.Icon.Default.prototype._getIconUrl;
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl:
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl:
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-});
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 // Lấy token đăng nhập
 const getAuthConfig = () => {
-  try {
-    const user = JSON.parse(
-      localStorage.getItem('currentUser') || '{}'
-    );
-
-    const token =
-      localStorage.getItem('token') ||
-      localStorage.getItem('auth_token') ||
-      user.token;
-
-    return token
-      ? {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      : {};
-  } catch {
-    return {};
-  }
+  const headers = getAuthHeaders();
+  return Object.keys(headers).length > 0
+    ? { headers: { Accept: 'application/json', ...headers } }
+    : { headers: { Accept: 'application/json' } };
 };
-
-// ---------------------------------------------
-// COMPONENT CLICK BẢN ĐỒ
-// ---------------------------------------------
-
-function MapClickHandler({ onSelectLocation }) {
-  useMapEvents({
-    click(event) {
-      onSelectLocation(event.latlng);
-    },
-  });
-
-  return null;
-}
-
-// ---------------------------------------------
-// COMPONENT DI CHUYỂN BẢN ĐỒ
-// ---------------------------------------------
-
-function MapController({ coordinates }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!coordinates) return;
-
-    map.flyTo(
-      [coordinates.lat, coordinates.lng],
-      16,
-      {
-        duration: 0.5,
-      }
-    );
-  }, [coordinates?.lat, coordinates?.lng, map]);
-
-  // Khi bản đồ được mở lại, Leaflet cần cập nhật kích thước
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [map]);
-
-  return null;
-}
 
 // ---------------------------------------------
 // COMPONENT CHÍNH
@@ -125,32 +40,157 @@ function MapController({ coordinates }) {
 
 export default function CartCheckoutPage({
   cartItems,
-  setCartItems
+  setCartItems,
+  currentUser = null,
 }) {
-  const [address, setAddress] = useState('');
-  const [coordinates, setCoordinates] = useState(null);
+  const [address, setAddress] = useState(
+    () => currentUser?.address || ''
+  );
+  const [coordinates, setCoordinates] = useState(() => {
+    const lat = Number(currentUser?.latitude);
+    const lng = Number(currentUser?.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)
+      ? { lat, lng }
+      : null;
+  });
+  const lastProfileAddressRef = useRef(currentUser?.address || '');
 
   const [calcLoading, setCalcLoading] = useState(false);
   const [shippingInfo, setShippingInfo] = useState(null);
+  const [shippingType, setShippingType] = useState('binh_thuong');
 
   const [submitting, setSubmitting] = useState(false);
   const [orderResult, setOrderResult] = useState(null);
 
-  const [activeTab, setActiveTab] = useState('checkout');
-
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState('');
-
-  const [selectedOrder, setSelectedOrder] = useState(null);
-
-  const [mapLoading, setMapLoading] = useState(false);
-  const [addressError, setAddressError] = useState('');
-
-  // Bản đồ ẩn mặc định
-  const [mapVisible, setMapVisible] = useState(false);
+  // Voucher Loyalty & Phương thức thanh toán
+  const [myVouchers, setMyVouchers] = useState([]);
+  const [selectedVoucherCode, setSelectedVoucherCode] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [pendingMoMo, setPendingMoMo] = useState(() => {
+    try {
+      const saved = localStorage.getItem('organic_pending_momo_cart');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [checkingMoMo, setCheckingMoMo] = useState(false);
+  const [cancelingMoMo, setCancelingMoMo] = useState(false);
 
   const items = Array.isArray(cartItems) ? cartItems : [];
+
+  const fetchUnusedVouchers = async () => {
+    try {
+      const res = await axios.get(
+        `${API_URL}/customer/loyalty`,
+        getAuthConfig()
+      );
+      const list = res.data?.data?.my_vouchers || [];
+      setMyVouchers(
+        Array.isArray(list)
+          ? list.filter((v) => v.status === 'chua_dung')
+          : []
+      );
+    } catch {
+      // Guest hoặc chưa có token thì bỏ qua
+    }
+  };
+
+  useEffect(() => {
+    fetchUnusedVouchers();
+  }, []);
+
+  const verifyPendingMoMoStatus = async (orderCode, silent = true) => {
+    if (!orderCode) return;
+    if (!silent) setCheckingMoMo(true);
+    try {
+      const res = await axios.get(
+        `${API_URL}/customer/orders/status/${encodeURIComponent(orderCode)}`,
+        getAuthConfig()
+      );
+      const ord = res.data?.data;
+      if (ord?.payment_status === 'da_thanh_toan') {
+        localStorage.removeItem('organic_pending_momo_cart');
+        setPendingMoMo(null);
+        setOrderResult({ status: 'success', data: ord });
+        setCartItems([]);
+        setShippingInfo(null);
+        setSelectedVoucherCode('');
+        fetchUnusedVouchers();
+      } else if (ord?.order_status === 'da_huy') {
+        localStorage.removeItem('organic_pending_momo_cart');
+        setPendingMoMo(null);
+        if (!silent) {
+          alert('Giao dịch MoMo đã bị hủy.');
+        }
+      } else if (!silent) {
+        alert('Chưa ghi nhận thanh toán MoMo thành công. Vui lòng hoàn tất thanh toán trên cổng MoMo.');
+      }
+    } catch (err) {
+      if (err.response?.status === 404) {
+        localStorage.removeItem('organic_pending_momo_cart');
+        setPendingMoMo(null);
+      } else if (!silent) {
+        alert(err.response?.data?.message || 'Không thể kiểm tra trạng thái thanh toán MoMo.');
+      }
+    } finally {
+      if (!silent) setCheckingMoMo(false);
+    }
+  };
+
+  useEffect(() => {
+    const code = pendingMoMo?.order_code;
+    if (!code) return;
+    verifyPendingMoMoStatus(code, true);
+    const intervalId = setInterval(() => {
+      verifyPendingMoMoStatus(code, true);
+    }, 3000);
+    return () => clearInterval(intervalId);
+  }, [pendingMoMo?.order_code]);
+
+  const handleCancelPendingMoMo = async () => {
+    if (!pendingMoMo?.order_code) return;
+    setCancelingMoMo(true);
+    try {
+      await axios.post(
+        `${API_URL}/customer/orders/${encodeURIComponent(pendingMoMo.order_code)}/cancel-pending-momo`,
+        {},
+        getAuthConfig()
+      );
+      localStorage.removeItem('organic_pending_momo_cart');
+      setPendingMoMo(null);
+      fetchUnusedVouchers();
+    } catch (err) {
+      if (err.response?.status === 422) {
+        await verifyPendingMoMoStatus(pendingMoMo.order_code, false);
+      } else {
+        alert(err.response?.data?.message || 'Không thể hủy giao dịch MoMo lúc này.');
+      }
+    } finally {
+      setCancelingMoMo(false);
+    }
+  };
+
+  useEffect(() => {
+    const profileAddr = String(currentUser?.address || '').trim();
+    const prevProfileAddr = String(lastProfileAddressRef.current || '').trim();
+
+    if (
+      profileAddr &&
+      (!String(address || '').trim() || String(address || '').trim() === prevProfileAddr)
+    ) {
+      setAddress(profileAddr);
+      setShippingInfo(null);
+
+      const lat = Number(currentUser?.latitude);
+      const lng = Number(currentUser?.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+        setCoordinates({ lat, lng });
+      }
+    }
+
+    lastProfileAddressRef.current = profileAddr;
+  }, [currentUser?.address, currentUser?.latitude, currentUser?.longitude]);
 
   // ---------------------------------------------
   // XÓA SẢN PHẨM
@@ -216,145 +256,47 @@ export default function CartCheckoutPage({
     shippingInfo?.shipping_fee || 0
   );
 
-  const total = subtotal + shippingFee;
+  const selectedVoucher =
+    myVouchers.find((v) => v.voucher_code === selectedVoucherCode) || null;
 
-  // ---------------------------------------------
-  // CHỌN VỊ TRÍ TRÊN MAP
-  // ---------------------------------------------
-
-  const handleMapSelect = async (latlng) => {
-    const lat = Number(latlng.lat);
-    const lng = Number(latlng.lng);
-
-    setCoordinates({ lat, lng });
-
-    setShippingInfo(null);
-    setAddressError('');
-    setMapLoading(true);
-
-    // Cập nhật tọa độ ngay lập tức
-    setAddress(
-      `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-    );
-
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          'Không thể lấy địa chỉ từ bản đồ.'
-        );
-      }
-
-      const result = await response.json();
-
-      if (result.display_name) {
-        setAddress(result.display_name);
-      }
-    } catch (error) {
-      console.error('Lỗi lấy địa chỉ:', error);
-
-      setAddressError(
-        'Không lấy được địa chỉ chi tiết. Tọa độ vẫn được lưu.'
-      );
-    } finally {
-      setMapLoading(false);
+  const voucherDiscount = (() => {
+    if (!selectedVoucher) return 0;
+    if (selectedVoucher.voucher_type === 'free_ship') {
+      return shippingInfo
+        ? Math.min(shippingFee, Number(selectedVoucher.discount_amount || 20000))
+        : 0;
     }
-  };
+    if (selectedVoucher.voucher_type === 'percent_discount') {
+      return Math.min(50000, Math.round(subtotal * 0.1));
+    }
+    return 0;
+  })();
+
+  const total = Math.max(0, subtotal + shippingFee - voucherDiscount);
 
   // ---------------------------------------------
-  // NHẬP ĐỊA CHỈ
+  // NHẬP ĐỊA CHỈ & TỌA ĐỘ
   // ---------------------------------------------
 
   const handleAddressChange = (value) => {
     setAddress(value);
-
     setShippingInfo(null);
-    setCoordinates(null);
-    setAddressError('');
   };
 
-  // ---------------------------------------------
-  // TÌM ĐỊA CHỈ TRÊN MAP
-  // ---------------------------------------------
-
-  const handleSearchAddressOnMap = async () => {
-    const searchAddress = String(address || '').trim();
-
-    if (!searchAddress) {
-      alert('Vui lòng nhập địa chỉ!');
-      return;
-    }
-
-    setMapLoading(true);
-    setAddressError('');
+  const handleCoordinatesChange = (coords) => {
+    setCoordinates(coords);
     setShippingInfo(null);
-
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(searchAddress)}&limit=1`
-      );
-
-      if (!response.ok) {
-        throw new Error('Không thể tìm vị trí.');
-      }
-
-      const result = await response.json();
-
-      if (!result || result.length === 0) {
-        throw new Error('Không tìm thấy địa chỉ.');
-      }
-
-      const lat = Number(result[0].lat);
-      const lng = Number(result[0].lon);
-
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        throw new Error('Tọa độ không hợp lệ.');
-      }
-
-      setCoordinates({
-        lat,
-        lng,
-      });
-
-      setAddress(
-        result[0].display_name || searchAddress
-      );
-
-      // Tìm địa chỉ xong tự mở bản đồ
-      setMapVisible(true);
-    } catch (error) {
-      console.error('Lỗi tìm địa chỉ:', error);
-
-      setAddressError(
-        error.message || 'Không tìm được vị trí.'
-      );
-    } finally {
-      setMapLoading(false);
-    }
   };
 
   // ---------------------------------------------
   // TÍNH PHÍ SHIP
   // ---------------------------------------------
 
-  const handleCalculateShip = async (e) => {
-    e.preventDefault();
-
-    const deliveryAddress = String(address || '').trim();
-
-    if (!deliveryAddress) {
-      alert('Vui lòng nhập địa chỉ giao hàng!');
-      return;
-    }
-
-    if (items.length === 0) {
-      alert('Giỏ hàng đang trống!');
-      return;
-    }
-
+  const calculateShipping = async (
+    deliveryAddress,
+    targetShippingType = shippingType,
+    targetCoordinates = coordinates
+  ) => {
     setCalcLoading(true);
     setShippingInfo(null);
 
@@ -362,9 +304,10 @@ export default function CartCheckoutPage({
       const res = await axios.post(
         `${API_URL}/shipping/calculate-km`,
         {
-          address: deliveryAddress,
-          latitude: coordinates?.lat ?? null,
-          longitude: coordinates?.lng ?? null,
+          customer_address: deliveryAddress,
+          latitude: targetCoordinates?.lat ?? null,
+          longitude: targetCoordinates?.lng ?? null,
+          shipping_type: targetShippingType,
         },
         getAuthConfig()
       );
@@ -390,6 +333,28 @@ export default function CartCheckoutPage({
     } finally {
       setCalcLoading(false);
     }
+  };
+
+  const handleSelectShippingType = async (nextType) => {
+    if (nextType === shippingType) return;
+    setShippingType(nextType);
+    const deliveryAddress = String(address || '').trim();
+    if (shippingInfo && deliveryAddress) {
+      await calculateShipping(deliveryAddress, nextType, coordinates);
+    }
+  };
+
+  const handleCalculateShip = async (e) => {
+    e.preventDefault();
+
+    const deliveryAddress = String(address || '').trim();
+
+    if (!deliveryAddress) {
+      alert('Vui lòng nhập hoặc chọn địa chỉ giao hàng trên bản đồ!');
+      return;
+    }
+
+    await calculateShipping(deliveryAddress, shippingType, coordinates);
   };
 
   // ---------------------------------------------
@@ -418,18 +383,17 @@ export default function CartCheckoutPage({
 
     try {
       const res = await axios.post(
-        `${API_URL}/orders/checkout-single`,
+        `${API_URL}/customer/orders/checkout-single`,
         {
-          address: deliveryAddress,
-
-          latitude: coordinates?.lat ?? null,
-          longitude: coordinates?.lng ?? null,
-
-          cart_items: items,
-
-          shipping_fee: shippingFee,
-
-          total_amount: total,
+          delivery_address: deliveryAddress,
+          distance_km: Number(shippingInfo.distance_km ?? 0),
+          shipping_type: shippingType,
+          payment_method: paymentMethod,
+          voucher_code: selectedVoucherCode || null,
+          items: items.map((item) => ({
+            product_id: Number(item.id),
+            quantity: Number(item.quantity),
+          })),
         },
         getAuthConfig()
       );
@@ -440,11 +404,32 @@ export default function CartCheckoutPage({
         data.status === 'success' ||
         data.success === true
       ) {
-        setOrderResult(data);
-
-        setCartItems([]);
-
-        setShippingInfo(null);
+        if (
+          paymentMethod === 'momo' &&
+          data.data?.payment_method === 'momo' &&
+          data.data?.payment_status !== 'da_thanh_toan'
+        ) {
+          const pendingPayload = {
+            order_code: data.data.order_code,
+            payment_url: data.data.payment_url,
+            qr_code_url: data.data.qr_code_url,
+            total_amount: data.data.total_amount,
+            applied_voucher: data.data.applied_voucher || null,
+          };
+          localStorage.setItem(
+            'organic_pending_momo_cart',
+            JSON.stringify(pendingPayload)
+          );
+          setPendingMoMo(pendingPayload);
+        } else {
+          localStorage.removeItem('organic_pending_momo_cart');
+          setPendingMoMo(null);
+          setOrderResult(data);
+          setCartItems([]);
+          setShippingInfo(null);
+          setSelectedVoucherCode('');
+          fetchUnusedVouchers();
+        }
       } else {
         alert(
           data.message ||
@@ -467,256 +452,88 @@ export default function CartCheckoutPage({
   };
 
   // ---------------------------------------------
-  // LỊCH SỬ ĐƠN HÀNG
+  // CHỜ THANH TOÁN VÍ MOMO (CHƯA ĐẶT HÀNG THÀNH CÔNG)
   // ---------------------------------------------
 
-  const fetchOrders = async () => {
-    setOrdersLoading(true);
-    setOrdersError('');
-
-    try {
-      const res = await axios.get(
-        `${API_URL}/orders/my-orders`,
-        getAuthConfig()
-      );
-
-      const data = res.data?.data ?? res.data;
-
-      setOrders(
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data?.orders)
-            ? data.orders
-            : []
-      );
-    } catch (err) {
-      console.error('Lỗi tải lịch sử đơn hàng:', err);
-
-      setOrdersError(
-        err.response?.data?.message ||
-        'Không thể tải lịch sử đơn hàng. Kiểm tra API Backend.'
-      );
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-
-  // Tải lịch sử khi mở tab
-  useEffect(() => {
-    if (activeTab === 'history') {
-      fetchOrders();
-    }
-  }, [activeTab]);
-
-  // ---------------------------------------------
-  // TRẠNG THÁI ĐƠN HÀNG
-  // ---------------------------------------------
-
-  const orderStatuses = [
-    {
-      value: 'pending',
-      label: 'Chờ xác nhận',
-      icon: Clock,
-    },
-    {
-      value: 'confirmed',
-      label: 'Đã xác nhận',
-      icon: CheckCircle,
-    },
-    {
-      value: 'processing',
-      label: 'Đang chuẩn bị',
-      icon: Package,
-    },
-    {
-      value: 'shipping',
-      label: 'Đang giao hàng',
-      icon: Truck,
-    },
-    {
-      value: 'delivered',
-      label: 'Đã giao thành công',
-      icon: CheckCircle,
-    },
-  ];
-
-  // ---------------------------------------------
-  // TÊN TRẠNG THÁI
-  // ---------------------------------------------
-
-  const getStatusLabel = (status) => {
-    const normalized = String(status || '')
-      .toLowerCase()
-      .trim();
-
-    const statusMap = {
-      pending: 'Chờ xác nhận',
-      waiting: 'Chờ xác nhận',
-      confirmed: 'Đã xác nhận',
-      processing: 'Đang chuẩn bị hàng',
-      preparing: 'Đang chuẩn bị hàng',
-      shipping: 'Đang giao hàng',
-      delivering: 'Đang giao hàng',
-      delivered: 'Đã giao thành công',
-      completed: 'Hoàn thành',
-      cancelled: 'Đã hủy',
-      rejected: 'Đã từ chối',
-    };
-
-    return statusMap[normalized] || status || 'Chưa cập nhật';
-  };
-
-  // ---------------------------------------------
-  // MÀU TRẠNG THÁI
-  // ---------------------------------------------
-
-  const getStatusColor = (status) => {
-    const normalized = String(status || '')
-      .toLowerCase()
-      .trim();
-
-    if (
-      normalized === 'delivered' ||
-      normalized === 'completed'
-    ) {
-      return 'bg-green-100 text-green-700';
-    }
-
-    if (
-      normalized === 'shipping' ||
-      normalized === 'delivering'
-    ) {
-      return 'bg-blue-100 text-blue-700';
-    }
-
-    if (
-      normalized === 'cancelled' ||
-      normalized === 'rejected'
-    ) {
-      return 'bg-red-100 text-red-700';
-    }
-
-    if (
-      normalized === 'confirmed' ||
-      normalized === 'processing' ||
-      normalized === 'preparing'
-    ) {
-      return 'bg-amber-100 text-amber-700';
-    }
-
-    return 'bg-gray-100 text-gray-700';
-  };
-
-  // ---------------------------------------------
-  // TIẾN TRÌNH ĐƠN HÀNG
-  // ---------------------------------------------
-
-  const renderOrderProgress = (status) => {
-    const normalized = String(status || '')
-      .toLowerCase()
-      .trim();
-
-    if (
-      normalized === 'cancelled' ||
-      normalized === 'rejected'
-    ) {
-      return (
-        <div className="p-3 bg-red-50 rounded-xl text-red-700 text-sm flex gap-2 items-center">
-          <XCircle size={18} />
-          Đơn hàng đã bị hủy hoặc từ chối.
-        </div>
-      );
-    }
-
-    const progressMap = {
-      pending: 0,
-      waiting: 0,
-      confirmed: 1,
-      processing: 2,
-      preparing: 2,
-      shipping: 3,
-      delivering: 3,
-      delivered: 4,
-      completed: 4,
-    };
-
-    const currentStep = progressMap[normalized] ?? 0;
-
+  if (pendingMoMo && !orderResult) {
     return (
-      <div className="mt-4 space-y-3">
-        {orderStatuses.map((step, index) => {
-          const StepIcon = step.icon;
-          const active = index <= currentStep;
+      <div className="max-w-2xl mx-auto my-12 px-4">
+        <div className="p-8 bg-white rounded-3xl shadow-xl border border-pink-100 text-center">
+          <div className="w-16 h-16 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Clock size={34} />
+          </div>
 
-          return (
-            <div
-              key={step.value}
-              className="flex items-center gap-3"
-            >
-              <div
-                className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                  active
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-gray-100 text-gray-400'
-                }`}
-              >
-                <StepIcon size={17} />
-              </div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Chờ thanh toán qua Ví MoMo
+          </h2>
 
-              <div>
-                <p
-                  className={`text-sm font-semibold ${
-                    active
-                      ? 'text-emerald-700'
-                      : 'text-gray-400'
-                  }`}
-                >
-                  {step.label}
-                </p>
-              </div>
+          <p className="text-sm text-gray-600 mt-2">
+            Mã giao dịch:
+            <strong className="text-pink-700 font-mono ml-2">
+              {pendingMoMo.order_code}
+            </strong>
+          </p>
+
+          <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto">
+            Đơn hàng chỉ chuyển sang trạng thái đặt hàng thành công và làm trống giỏ hàng sau khi bạn hoàn tất thanh toán trên cổng Ví MoMo.
+          </p>
+
+          {pendingMoMo.applied_voucher && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800">
+              <p className="font-bold">
+                Đã tạm giữ voucher: {pendingMoMo.applied_voucher.voucher_name} (
+                {pendingMoMo.applied_voucher.voucher_code})
+              </p>
             </div>
-          );
-        })}
+          )}
+
+          {pendingMoMo.payment_url && (
+            <div className="mt-5 rounded-2xl border border-pink-200 bg-pink-50/70 p-5 text-center">
+              <p className="text-xs font-bold text-pink-700">
+                Quét mã QR hoặc mở cổng thanh toán MoMo để xác nhận
+              </p>
+              {pendingMoMo.qr_code_url && (
+                <img
+                  src={pendingMoMo.qr_code_url}
+                  alt="QR MoMo"
+                  className="mx-auto my-3 h-36 w-36 rounded-xl border border-pink-200 bg-white p-1.5"
+                />
+              )}
+              <a
+                href={pendingMoMo.payment_url}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-pink-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-pink-700"
+              >
+                Tiếp tục thanh toán MoMo
+                <ExternalLink size={15} />
+              </a>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">
+            <button
+              type="button"
+              onClick={() => verifyPendingMoMoStatus(pendingMoMo.order_code, false)}
+              disabled={checkingMoMo || cancelingMoMo}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {checkingMoMo ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              Kiểm tra thanh toán
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCancelPendingMoMo}
+              disabled={cancelingMoMo || checkingMoMo}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 border border-rose-200 bg-rose-50 text-rose-700 font-semibold rounded-xl hover:bg-rose-100 disabled:opacity-60"
+            >
+              {cancelingMoMo ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
+              Hủy giao dịch &amp; giữ giỏ hàng
+            </button>
+          </div>
+        </div>
       </div>
     );
-  };
-
-  // ---------------------------------------------
-  // THÔNG TIN ĐƠN HÀNG
-  // ---------------------------------------------
-
-  const getOrderId = (order) => (
-    order?.order_id ??
-    order?.id ??
-    order?.code ??
-    'N/A'
-  );
-
-  const getOrderTotal = (order) => (
-    Number(
-      order?.total_amount ??
-      order?.total ??
-      order?.final_amount ??
-      0
-    )
-  );
-
-  const getOrderStatus = (order) => (
-    order?.status ??
-    order?.order_status ??
-    'pending'
-  );
-
-  const getOrderDate = (order) => {
-    const date =
-      order?.created_at ??
-      order?.order_date ??
-      order?.createdAt;
-
-    if (!date) return 'Chưa cập nhật';
-
-    return new Date(date).toLocaleString('vi-VN');
-  };
+  }
 
   // ---------------------------------------------
   // ĐẶT HÀNG THÀNH CÔNG
@@ -731,13 +548,16 @@ export default function CartCheckoutPage({
           </div>
 
           <h2 className="text-2xl font-bold text-gray-900">
-            Đặt hàng thành công!
+            {orderResult.data?.payment_method === 'momo'
+              ? 'Thanh toán MoMo & Đặt hàng thành công!'
+              : 'Đặt hàng thành công!'}
           </h2>
 
           <p className="text-sm text-gray-600 mt-3">
             Mã đơn hàng:
             <strong className="text-emerald-700 font-mono ml-2">
-              {orderResult.order_id ??
+              {orderResult.data?.order_code ??
+                orderResult.order_id ??
                 orderResult.data?.order_id ??
                 orderResult.data?.id ??
                 orderResult.id ??
@@ -745,23 +565,29 @@ export default function CartCheckoutPage({
             </strong>
           </p>
 
+          {orderResult.data?.applied_voucher && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800">
+              <p className="font-bold">
+                Đã áp dụng voucher: {orderResult.data.applied_voucher.voucher_name} (
+                {orderResult.data.applied_voucher.voucher_code})
+              </p>
+              {orderResult.data.applied_voucher.gift_note && (
+                <p className="mt-1 font-semibold text-emerald-700">
+                  🎁 {orderResult.data.applied_voucher.gift_note}
+                </p>
+              )}
+            </div>
+          )}
+
           <p className="text-sm text-gray-500 mt-2">
             Đơn hàng của bạn đã được ghi nhận.
             Bạn có thể theo dõi trạng thái đơn trong lịch sử.
           </p>
 
-          <div className="text-xs text-amber-800 bg-amber-50 p-4 rounded-xl mt-4 border border-amber-200">
-            {orderResult.message ||
-              'Đơn hàng đã được ghi nhận.'}
-          </div>
-
           <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">
             <button
               type="button"
-              onClick={() => {
-                setOrderResult(null);
-                setActiveTab('checkout');
-              }}
+              onClick={() => setOrderResult(null)}
               className="px-6 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700"
             >
               Tiếp tục mua sắm
@@ -771,7 +597,11 @@ export default function CartCheckoutPage({
               type="button"
               onClick={() => {
                 setOrderResult(null);
-                setActiveTab('history');
+                window.dispatchEvent(
+                  new CustomEvent('organic:navigate', {
+                    detail: { page: 'transactions' },
+                  })
+                );
               }}
               className="px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200"
             >
@@ -789,265 +619,11 @@ export default function CartCheckoutPage({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-
-      {/* TAB */}
-      <div className="flex gap-3 mb-8 flex-wrap">
-        <button
-          type="button"
-          onClick={() => setActiveTab('checkout')}
-          className={`px-5 py-3 rounded-xl font-semibold flex items-center gap-2 ${
-            activeTab === 'checkout'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-white border text-gray-700'
-          }`}
-        >
-          <ShoppingBag size={18} />
-          Giỏ hàng & Thanh toán
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('history')}
-          className={`px-5 py-3 rounded-xl font-semibold flex items-center gap-2 ${
-            activeTab === 'history'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-white border text-gray-700'
-          }`}
-        >
-          <ClipboardList size={18} />
-          Lịch sử đơn hàng
-        </button>
-      </div>
-
-      {/* ======================================= */}
-      {/* LỊCH SỬ ĐƠN HÀNG */}
-      {/* ======================================= */}
-
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-
-          <div className="bg-white p-6 rounded-2xl border shadow-sm flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">
-                Lịch sử mua hàng
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-1">
-                Kiểm tra đơn hàng và tiến trình giao hàng.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={fetchOrders}
-              disabled={ordersLoading}
-              className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl font-semibold flex items-center gap-2 disabled:opacity-50"
-            >
-              <RefreshCw
-                size={16}
-                className={ordersLoading ? 'animate-spin' : ''}
-              />
-              Làm mới
-            </button>
-          </div>
-
-          {ordersLoading && (
-            <div className="bg-white p-12 rounded-2xl text-center">
-              <Loader2
-                size={36}
-                className="animate-spin text-emerald-600 mx-auto"
-              />
-
-              <p className="mt-3 text-gray-500">
-                Đang tải lịch sử đơn hàng...
-              </p>
-            </div>
-          )}
-
-          {ordersError && !ordersLoading && (
-            <div className="p-5 bg-red-50 border border-red-200 rounded-2xl text-red-700">
-              {ordersError}
-
-              <button
-                type="button"
-                onClick={fetchOrders}
-                className="mt-3 block px-4 py-2 bg-red-600 text-white rounded-xl"
-              >
-                Thử lại
-              </button>
-            </div>
-          )}
-
-          {!ordersLoading &&
-            !ordersError &&
-            orders.length === 0 && (
-              <div className="bg-white p-12 rounded-2xl text-center border">
-                <Package
-                  size={48}
-                  className="mx-auto text-gray-300"
-                />
-
-                <p className="font-semibold mt-4 text-gray-700">
-                  Bạn chưa có đơn hàng nào.
-                </p>
-
-                <p className="text-sm text-gray-500 mt-2">
-                  Các đơn hàng đã đặt sẽ hiển thị tại đây.
-                </p>
-              </div>
-            )}
-
-          {!ordersLoading &&
-            !ordersError &&
-            orders.map((order, index) => {
-              const status = getOrderStatus(order);
-
-              const isSelected =
-                String(getOrderId(order)) ===
-                String(getOrderId(selectedOrder || {}));
-
-              const orderItems =
-                order.items ??
-                order.order_items ??
-                order.details ??
-                [];
-
-              return (
-                <div
-                  key={order.id ?? index}
-                  className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
-                >
-                  {/* HEADER ĐƠN HÀNG */}
-                  <div className="p-5 border-b flex flex-wrap justify-between gap-4 items-center">
-                    <div>
-                      <p className="text-xs text-gray-500">
-                        Mã đơn hàng
-                      </p>
-
-                      <p className="font-mono font-bold text-emerald-700 mt-1">
-                        #{getOrderId(order)}
-                      </p>
-
-                      <p className="text-xs text-gray-500 mt-2">
-                        {getOrderDate(order)}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold ${getStatusColor(status)}`}
-                      >
-                        {getStatusLabel(status)}
-                      </span>
-
-                      <p className="text-lg font-bold text-emerald-700 mt-3">
-                        {getOrderTotal(order).toLocaleString('vi-VN')}đ
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* CHI TIẾT */}
-                  <div className="p-5">
-                    <p className="text-sm text-gray-700 flex gap-2">
-                      <MapPin
-                        size={17}
-                        className="text-emerald-600 shrink-0"
-                      />
-
-                      <span>
-                        {order.address ??
-                          order.delivery_address ??
-                          'Chưa cập nhật địa chỉ'}
-                      </span>
-                    </p>
-
-                    {/* SẢN PHẨM */}
-                    <div className="mt-4">
-                      <p className="font-semibold text-gray-800 text-sm mb-3">
-                        Sản phẩm
-                      </p>
-
-                      {Array.isArray(orderItems) &&
-                      orderItems.length > 0 ? (
-                        <div className="space-y-2">
-                          {orderItems.map((item, itemIndex) => (
-                            <div
-                              key={item.id ?? itemIndex}
-                              className="flex justify-between gap-3 text-sm"
-                            >
-                              <span className="text-gray-600">
-                                {item.product_name ??
-                                  item.name ??
-                                  item.product?.name ??
-                                  'Sản phẩm'}
-                                {' '}x
-                                {item.quantity ?? 1}
-                              </span>
-
-                              <span className="font-semibold text-gray-700">
-                                {Number(
-                                  item.price ??
-                                  item.unit_price ??
-                                  0
-                                ).toLocaleString('vi-VN')}đ
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400">
-                          Backend chưa trả về chi tiết sản phẩm.
-                        </p>
-                      )}
-                    </div>
-
-                    {/* THEO DÕI */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedOrder(
-                          isSelected ? null : order
-                        )
-                      }
-                      className="mt-5 px-4 py-2.5 border border-emerald-200 text-emerald-700 rounded-xl font-semibold text-sm hover:bg-emerald-50"
-                    >
-                      {isSelected
-                        ? 'Ẩn tiến trình'
-                        : 'Theo dõi đơn hàng'}
-
-                      {isSelected
-                        ? <ChevronUp size={16} className="inline ml-2" />
-                        : <ChevronDown size={16} className="inline ml-2" />}
-                    </button>
-
-                    {isSelected && (
-                      <div className="mt-5 p-5 bg-gray-50 rounded-2xl">
-                        <h4 className="font-bold text-gray-900">
-                          Tiến trình đơn hàng
-                        </h4>
-
-                        {renderOrderProgress(status)}
-
-                        {order.note && (
-                          <div className="mt-4 p-3 bg-white rounded-xl text-sm text-gray-600">
-                            Ghi chú: {order.note}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-      )}
-
       {/* ======================================= */}
       {/* GIỎ HÀNG & THANH TOÁN */}
       {/* ======================================= */}
 
-      {activeTab === 'checkout' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
           {/* GIỎ HÀNG */}
           <div className="lg:col-span-2 space-y-6">
@@ -1168,153 +744,72 @@ export default function CartCheckoutPage({
                 Nhập địa chỉ hoặc chọn trực tiếp trên bản đồ.
               </p>
 
-              {/* NHẬP ĐỊA CHỈ */}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  placeholder="Nhập địa chỉ giao hàng..."
-                  className="flex-1 px-4 py-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                  value={address}
-                  onChange={e =>
-                    handleAddressChange(e.target.value)
-                  }
-                />
+              <DeliveryAddressMap
+                address={address}
+                onAddressChange={handleAddressChange}
+                coordinates={coordinates}
+                onCoordinatesChange={handleCoordinatesChange}
+                placeholder="Nhập địa chỉ giao hàng..."
+              />
 
-                <button
-                  type="button"
-                  onClick={handleSearchAddressOnMap}
-                  disabled={mapLoading}
-                  className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-gray-200 disabled:opacity-50"
-                >
-                  {mapLoading ? (
-                    <Loader2
-                      size={17}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <LocateFixed size={17} />
-                  )}
+              {/* ================================= */}
+              {/* HÌNH THỨC GIAO HÀNG */}
+              {/* ================================= */}
 
-                  {mapLoading
-                    ? 'Đang tìm...'
-                    : 'Tìm địa chỉ'}
-                </button>
+              <div className="mt-5">
+                <p className="text-xs font-bold text-gray-700 mb-2">
+                  Chọn hình thức giao hàng
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={calcLoading}
+                    onClick={() => handleSelectShippingType('binh_thuong')}
+                    className={`rounded-xl border p-3.5 text-left transition ${
+                      shippingType === 'binh_thuong'
+                        ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600'
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-900">
+                        <Truck size={16} className="text-emerald-600" />
+                        Giao hàng bình thường
+                      </span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        Tiết kiệm
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Giao tiêu chuẩn theo tuyến (nội vùng trong ngày/sáng mai, liên tỉnh 1–4 ngày).
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={calcLoading}
+                    onClick={() => handleSelectShippingType('hoa_toc')}
+                    className={`rounded-xl border p-3.5 text-left transition ${
+                      shippingType === 'hoa_toc'
+                        ? 'border-rose-600 bg-rose-50 ring-1 ring-rose-600'
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-900">
+                        <Flame size={16} className="text-rose-600" />
+                        Giao hàng hỏa tốc
+                      </span>
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                        Nhanh nhất
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Ưu tiên xử lý ngay (nội vùng giao trong giờ, liên tỉnh lạnh/hàng không 1–2 ngày).
+                    </p>
+                  </button>
+                </div>
               </div>
-
-              {/* LỖI ĐỊA CHỈ */}
-              {addressError && (
-                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                  {addressError}
-                </div>
-              )}
-
-              {/* LOADING */}
-              {mapLoading && (
-                <div className="text-sm text-gray-500 mt-3 flex items-center gap-2">
-                  <Loader2
-                    size={16}
-                    className="animate-spin"
-                  />
-                  Đang xác định địa chỉ...
-                </div>
-              )}
-
-              {/* ================================= */}
-              {/* MỞ / ĐÓNG BẢN ĐỒ */}
-              {/* ================================= */}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setMapVisible(prev => !prev)
-                }
-                className="w-full mt-4 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-emerald-100 transition"
-              >
-                <MapPin size={18} />
-
-                {mapVisible
-                  ? 'Ẩn bản đồ'
-                  : 'Chọn vị trí trên bản đồ'}
-
-                {mapVisible
-                  ? <ChevronUp size={18} />
-                  : <ChevronDown size={18} />}
-              </button>
-
-              {/* ================================= */}
-              {/* BẢN ĐỒ - CHỈ TẠO KHI MỞ */}
-              {/* ================================= */}
-
-              {mapVisible && (
-                <div className="mt-4">
-                  <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
-                    <MapContainer
-                      center={
-                        coordinates
-                          ? [
-                              coordinates.lat,
-                              coordinates.lng,
-                            ]
-                          : DEFAULT_CENTER
-                      }
-                      zoom={coordinates ? 16 : 12}
-                      scrollWheelZoom={true}
-                      style={{
-                        height: '350px',
-                        width: '100%',
-                      }}
-                    >
-                      <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      />
-
-                      <MapController
-                        coordinates={coordinates}
-                      />
-
-                      <MapClickHandler
-                        onSelectLocation={handleMapSelect}
-                      />
-
-                      {coordinates && (
-                        <Marker
-                          position={[
-                            coordinates.lat,
-                            coordinates.lng,
-                          ]}
-                        />
-                      )}
-                    </MapContainer>
-                  </div>
-
-                  <p className="text-xs text-gray-500 mt-3">
-                    <MapPin
-                      size={14}
-                      className="inline text-emerald-600 mr-1"
-                    />
-                    Click trực tiếp trên bản đồ để chọn vị trí nhận hàng.
-                  </p>
-                </div>
-              )}
-
-              {/* ================================= */}
-              {/* TỌA ĐỘ */}
-              {/* ================================= */}
-
-              {coordinates && (
-                <div className="mt-3 p-4 bg-emerald-50 rounded-xl text-sm text-emerald-800">
-                  <p>
-                    <strong>Vĩ độ:</strong>{' '}
-                    {coordinates.lat}
-                  </p>
-
-                  <p>
-                    <strong>Kinh độ:</strong>{' '}
-                    {coordinates.lng}
-                  </p>
-                </div>
-              )}
 
               {/* ================================= */}
               {/* TÍNH SHIP */}
@@ -1326,10 +821,7 @@ export default function CartCheckoutPage({
               >
                 <button
                   type="submit"
-                  disabled={
-                    calcLoading ||
-                    items.length === 0
-                  }
+                  disabled={calcLoading}
                   className="w-full px-5 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {calcLoading ? (
@@ -1369,7 +861,25 @@ export default function CartCheckoutPage({
                     </strong>
                   </div>
 
-                  <div className="flex justify-between items-center text-sm gap-3">
+                  {shippingInfo.shipping_method && (
+                    <div className="flex justify-between items-center text-sm gap-3">
+                      <span className="text-gray-700">Hình thức giao</span>
+                      <strong className="text-right text-slate-800">
+                        {shippingInfo.shipping_method}
+                      </strong>
+                    </div>
+                  )}
+
+                  {(shippingInfo.estimated_delivery || shippingInfo.duration_text) && (
+                    <div className="flex justify-between items-center text-sm gap-3">
+                      <span className="text-gray-700">Dự kiến giao tới</span>
+                      <strong className="text-right text-emerald-800">
+                        {shippingInfo.estimated_delivery || shippingInfo.duration_text}
+                      </strong>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-sm gap-3 border-t border-emerald-200/70 pt-2">
                     <span className="text-gray-700">
                       Phí vận chuyển
                     </span>
@@ -1398,6 +908,43 @@ export default function CartCheckoutPage({
               Thanh Toán Đơn Hàng
             </h3>
 
+            {/* VOUCHER & QUÀ TẶNG LOYALTY */}
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 space-y-2">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                <Ticket size={15} className="text-amber-600" />
+                Áp dụng Voucher / Quà tặng đã đổi
+              </label>
+
+              {myVouchers.length === 0 ? (
+                <p className="text-[11px] text-amber-800/80">
+                  Bạn chưa có voucher khả dụng. Hãy vào mục Điểm Loyalty để đổi ưu đãi hoặc quà tặng 1kg!
+                </p>
+              ) : (
+                <select
+                  value={selectedVoucherCode}
+                  onChange={(e) => setSelectedVoucherCode(e.target.value)}
+                  className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-500"
+                >
+                  <option value="">-- Không áp dụng voucher --</option>
+                  {myVouchers.map((v) => (
+                    <option key={v.id} value={v.voucher_code}>
+                      [{v.voucher_code}] {v.voucher_name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {selectedVoucher?.voucher_type === 'free_gift' && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-2.5 py-2 text-xs font-semibold text-emerald-800">
+                  <Gift size={14} className="shrink-0" />
+                  <span>
+                    Tặng kèm 1 {selectedVoucher.gift_product?.unit || 'kg'}{' '}
+                    {selectedVoucher.gift_product?.name || 'Cà Chua Cherry VietGAP'} (0đ - xuất kho FEFO)
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-3 text-sm text-gray-600">
               <div className="flex justify-between">
                 <span>Số loại sản phẩm:</span>
@@ -1424,6 +971,15 @@ export default function CartCheckoutPage({
                     : 'Chưa tính'}
                 </span>
               </div>
+
+              {voucherDiscount > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Giảm giá Voucher:</span>
+                  <span className="font-bold">
+                    -{voucherDiscount.toLocaleString('vi-VN')}đ
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* TỔNG */}
@@ -1437,6 +993,82 @@ export default function CartCheckoutPage({
               </span>
             </div>
 
+            {/* DỰ KIẾN THỜI GIAN GIAO TỚI (GIỐNG ĐỊNH KỲ) */}
+            <div
+              className={`rounded-xl p-3 text-xs ${
+                shippingInfo
+                  ? shippingType === 'hoa_toc'
+                    ? 'bg-rose-50 text-rose-800'
+                    : 'bg-emerald-50 text-emerald-700'
+                  : 'bg-slate-50 text-slate-600'
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                {shippingType === 'hoa_toc' ? (
+                  <Flame size={17} className="text-rose-600" />
+                ) : (
+                  <Truck size={17} className="text-emerald-600" />
+                )}
+                <span className="font-bold">
+                  {shippingType === 'hoa_toc'
+                    ? 'Giao hàng hỏa tốc'
+                    : 'Giao hàng bình thường'}
+                </span>
+              </div>
+              {shippingInfo ? (
+                <div className="space-y-1">
+                  <p>
+                    Dự kiến giao tới:{' '}
+                    <strong>
+                      {shippingInfo.estimated_delivery || shippingInfo.duration_text}
+                    </strong>
+                  </p>
+                  {shippingInfo.shipping_method && (
+                    <p className="text-[11px] opacity-90">
+                      Hình thức: {shippingInfo.shipping_method} ({shippingInfo.distance_km ?? 0} km)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p>
+                  Dự kiến thời gian giao tới sẽ hiển thị sau khi bạn bấm{' '}
+                  <strong>Tính phí vận chuyển</strong>.
+                </p>
+              )}
+            </div>
+
+            {/* PHƯƠNG THỨC THANH TOÁN */}
+            <div className="space-y-2 border-t border-gray-100 pt-3">
+              <p className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                <CreditCard size={15} className="text-emerald-600" />
+                Phương thức thanh toán
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cod')}
+                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    paymentMethod === 'cod'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Tiền mặt (COD)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('momo')}
+                  className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    paymentMethod === 'momo'
+                      ? 'border-pink-600 bg-pink-50 text-pink-700'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Ví MoMo
+                </button>
+              </div>
+            </div>
+
             {/* ĐẶT HÀNG */}
             <button
               type="button"
@@ -1446,7 +1078,11 @@ export default function CartCheckoutPage({
                 items.length === 0 ||
                 !shippingInfo
               }
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+              className={`w-full py-3 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 ${
+                paymentMethod === 'momo'
+                  ? 'bg-pink-600 hover:bg-pink-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
             >
               {submitting ? (
                 <>
@@ -1475,7 +1111,6 @@ export default function CartCheckoutPage({
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 }

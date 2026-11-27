@@ -9,6 +9,8 @@ import {
 
 import axios from 'axios';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+
 export default function GenerateQrButton({
   batchId,
   existingQrUrl,
@@ -31,11 +33,17 @@ export default function GenerateQrButton({
     setError('');
 
     try {
-      const res = await axios.post(
-        `http://localhost:8000/api/v1/batches/${batchId}/generate-qr`
+      const res = await axios.get(
+        `${API_URL}/batches/qr/${encodeURIComponent(batchId)}`
       );
 
-      setQrUrl(res.data.qr_code_url);
+      const batchData = res.data?.data?.batch ?? res.data?.data ?? {};
+      setQrUrl(
+        batchData.qr_code_url ||
+          `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+            `${window.location.origin}/traceability/${batchData.batch_code || batchId}`
+          )}`
+      );
     } catch (error) {
       console.error('Lỗi sinh mã QR:', error);
 

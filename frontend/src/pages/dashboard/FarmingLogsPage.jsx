@@ -1,128 +1,229 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import axios from 'axios';
 import {
   ClipboardList,
   ImagePlus,
   Send,
   Calendar,
-  ChevronLeft,
-  ChevronRight,
+  Loader2,
+  X,
+  Trash2,
+  Play,
+  ZoomIn,
 } from 'lucide-react';
-import { fetchBatches, createFarmingLog } from '../../services/api';
+import { getAuthHeaders } from '../../services/api';
+import Pagination from '../../components/Pagination';
+import MediaLightbox, { isVideoMediaUrl } from '../../components/MediaLightbox';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+const MAX_MEDIA_FILES = 5;
+const ITEMS_PER_PAGE = 5;
+
+const STAGE_OPTIONS = [
+  { value: 'gieo_hat', label: 'Gieo hạt & Làm đất vi sinh' },
+  { value: 'bon_phan', label: 'Bón phân hữu cơ' },
+  { value: 'tuoi_tieu', label: 'Tưới nước & Bón phân hữu cơ' },
+  { value: 'phong_tru_sau_benh', label: 'Kiểm tra sâu bệnh sinh học' },
+  { value: 'kiem_dinh', label: 'Kiểm định mẫu đất/nước VietGAP' },
+  { value: 'thu_hoach', label: 'Thu hoạch & Sơ chế đóng gói' },
+];
 
 export default function FarmingLogsPage() {
   const [batches, setBatches] = useState([]);
-  const [selectedBatch, setSelectedBatch] = useState('');
+  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedStage, setSelectedStage] = useState('tuoi_tieu');
   const [actionTitle, setActionTitle] = useState('Tưới nước & Bón phân hữu cơ');
   const [note, setNote] = useState('');
-  const [mediaPreview, setMediaPreview] = useState('');
-
+  const [mediaItems, setMediaItems] = useState([]); // [{ id, file, url, isVideo, name }]
+  const [previewMedia, setPreviewMedia] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingLogId, setDeletingLogId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 5;
 
-  const [logs, setLogs] = useState([
-    {
-      id: 6,
-      batch_code: 'LOT-20261124-03',
-      action: 'Thu hoạch & Đóng gói sơ chế',
-      note: 'Thu hoạch dâu tây lúc 5h30 sáng, đóng hộp bảo quản lạnh 8°C.',
-      isoDate: '2026-11-26',
-      created_at: '26/11/2026',
-      media: '',
-    },
-    {
-      id: 5,
-      batch_code: 'LOT-20261120-02',
-      action: 'Kiểm tra sâu bệnh sinh học',
-      note: 'Không phát hiện sâu hại, lá cải xanh đều màu.',
-      isoDate: '2026-11-24',
-      created_at: '24/11/2026',
-      media: '',
-    },
-    {
-      id: 4,
-      batch_code: 'LOT-20261120-02',
-      action: 'Tưới nước & Bón phân trùn quế',
-      note: 'Bổ sung dinh dưỡng hữu cơ đợt 2 cho luống cải Kale.',
-      isoDate: '2026-11-20',
-      created_at: '20/11/2026',
-      media: '',
-    },
-    {
-      id: 3,
-      batch_code: 'LOT-20261115-01',
-      action: 'Kiểm định mẫu đất/nước VietGAP',
-      note: 'Kết quả kiểm tra dư lượng nitrat đạt chuẩn an toàn.',
-      isoDate: '2026-11-15',
-      created_at: '15/11/2026',
-      media: '',
-    },
-    {
-      id: 2,
-      batch_code: 'LOT-20261115-01',
-      action: 'Tưới nhỏ giọt tự động',
-      note: 'Duy trì độ ẩm đất 75% bằng nước giếng khoan đã lọc.',
-      isoDate: '2026-11-02',
-      created_at: '02/11/2026',
-      media: '',
-    },
-    {
-      id: 1,
-      batch_code: 'LOT-20261115-01',
-      action: 'Gieo hạt giống hữu cơ F1',
-      note: 'Sử dụng giá thể mùn dừa vi sinh, tỷ lệ nảy mầm 96%.',
-      isoDate: '2026-10-01',
-      created_at: '01/10/2026',
-      media: '',
-    },
-  ]);
+  const fileInputRef = useRef(null);
+  const mediaUrlsRef = useRef([]);
 
   useEffect(() => {
-    fetchBatches().then((data) => {
-      setBatches(data);
-      if (data.length > 0) setSelectedBatch(data[0].batch_code);
-    });
+    mediaUrlsRef.current = mediaItems.map((m) => m.url);
+  }, [mediaItems]);
+
+  useEffect(() => {
+    return () => {
+      mediaUrlsRef.current.forEach((url) => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
   }, []);
 
-  const handleImageChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setMediaPreview(URL.createObjectURL(file));
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const headers = getAuthHeaders();
+      const [batchRes, logRes] = await Promise.all([
+        axios.get(`${API_URL}/farm/batches`, { headers }),
+        axios.get(`${API_URL}/farm/farming-logs`, { headers }),
+      ]);
+
+      const batchList = Array.isArray(batchRes.data?.data) ? batchRes.data.data : [];
+      const logList = Array.isArray(logRes.data?.data) ? logRes.data.data : [];
+
+      setBatches(batchList);
+      setLogs(logList);
+      if (batchList.length > 0) {
+        setSelectedBatchId((prev) => prev || String(batchList[0].id));
+      }
+    } catch (err) {
+      console.error('Lỗi tải nhật ký canh tác:', err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleMediaFilesChange = (e) => {
+    const selected = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (selected.length === 0) return;
+
+    const validFiles = selected.filter(
+      (f) => f.type.startsWith('image/') || f.type.startsWith('video/')
+    );
+    if (validFiles.length !== selected.length) {
+      alert('Chỉ hỗ trợ tệp hình ảnh (JPG, PNG, WEBP) hoặc video (MP4, MOV, WEBM)!');
+    }
+    if (validFiles.length === 0) return;
+
+    setMediaItems((prev) => {
+      const remaining = MAX_MEDIA_FILES - prev.length;
+      if (remaining <= 0) {
+        alert(`Mỗi nhật ký chỉ được đính kèm tối đa ${MAX_MEDIA_FILES} ảnh/video.`);
+        return prev;
+      }
+
+      const toAdd = validFiles.slice(0, remaining).map((file, idx) => ({
+        id: `${Date.now()}-${idx}-${file.name}`,
+        file,
+        url: URL.createObjectURL(file),
+        isVideo: file.type.startsWith('video/'),
+        name: file.name,
+      }));
+
+      if (validFiles.length > remaining) {
+        alert(`Đã giữ ${remaining} tệp đầu tiên (tối đa ${MAX_MEDIA_FILES} tệp/lần).`);
+      }
+      return [...prev, ...toAdd];
+    });
+  };
+
+  const handleRemoveMediaItem = (id) => {
+    setMediaItems((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (target?.url && target.url.startsWith('blob:')) {
+        URL.revokeObjectURL(target.url);
+      }
+      return prev.filter((m) => m.id !== id);
+    });
+  };
+
+  const clearAllMediaItems = () => {
+    mediaItems.forEach((m) => {
+      if (m.url && m.url.startsWith('blob:')) {
+        URL.revokeObjectURL(m.url);
+      }
+    });
+    setMediaItems([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleStageSelect = (stageValue) => {
+    setSelectedStage(stageValue);
+    const matched = STAGE_OPTIONS.find((item) => item.value === stageValue);
+    if (matched) setActionTitle(matched.label);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedBatchId) {
+      alert('Chưa có lô hàng nào! Vui lòng tạo lô hàng ở tab Khởi tạo Lô hàng trước.');
+      return;
+    }
     if (!note.trim()) {
       alert('Vui lòng nhập nội dung chi tiết công việc chăm sóc!');
       return;
     }
 
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const newLog = await createFarmingLog({
-      batch_code: selectedBatch,
-      action: actionTitle,
-      note,
-      isoDate: todayIso,
-      media: mediaPreview,
-    });
+    setSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append('batch_id', selectedBatchId);
+      formData.append('stage', selectedStage);
+      formData.append('title', actionTitle);
+      formData.append('description', note.trim());
 
-    setLogs((prev) => [newLog, ...prev]);
-    setCurrentPage(1);
-    setNote('');
-    setMediaPreview('');
-    alert('Đã cập nhật nhật ký canh tác lên hệ thống truy xuất QR!');
+      mediaItems.forEach((item) => {
+        formData.append('media_files[]', item.file);
+      });
+
+      await axios.post(`${API_URL}/farm/farming-logs`, formData, {
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      setCurrentPage(1);
+      setNote('');
+      clearAllMediaItems();
+      await loadData();
+      alert('Đã cập nhật nhật ký canh tác lên hệ thống truy xuất QR!');
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        Object.values(err.response?.data?.errors || {})
+          .flat()
+          .join('\n') ||
+        'Không thể lưu nhật ký canh tác.';
+      alert(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Sắp xếp ngày mới nhất lên đầu
+  const handleDeleteLog = async (logId) => {
+    if (!window.confirm('Bạn muốn xóa bản ghi nhật ký canh tác này?')) return;
+    setDeletingLogId(logId);
+    try {
+      await axios.delete(`${API_URL}/farm/farming-logs/${logId}`, {
+        headers: getAuthHeaders(),
+      });
+      await loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Không thể xóa nhật ký canh tác.');
+    } finally {
+      setDeletingLogId(null);
+    }
+  };
+
   const sortedLogs = [...logs].sort((a, b) =>
-    (b.isoDate || '').localeCompare(a.isoDate || '')
+    String(b.logged_at || b.created_at || '').localeCompare(
+      String(a.logged_at || a.created_at || '')
+    )
   );
 
-  // Phân trang tối đa 5 mục / trang
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
   const paginatedLogs = sortedLogs.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE
   );
 
   return (
@@ -142,15 +243,20 @@ export default function FarmingLogsPage() {
                 Chọn Lô hàng áp dụng
               </label>
               <select
-                value={selectedBatch}
-                onChange={(e) => setSelectedBatch(e.target.value)}
+                value={selectedBatchId}
+                onChange={(e) => setSelectedBatchId(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                required
               >
-                {batches.map((b) => (
-                  <option key={b.id} value={b.batch_code}>
-                    {b.batch_code} - {b.product_name}
-                  </option>
-                ))}
+                {batches.length === 0 ? (
+                  <option value="">-- Chưa có lô hàng nào --</option>
+                ) : (
+                  batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batch_code} - {b.product?.name || 'Nông sản'}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -159,25 +265,15 @@ export default function FarmingLogsPage() {
                 Giai đoạn / Hoạt động
               </label>
               <select
-                value={actionTitle}
-                onChange={(e) => setActionTitle(e.target.value)}
+                value={selectedStage}
+                onChange={(e) => handleStageSelect(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
               >
-                <option value="Gieo hạt & Làm đất vi sinh">
-                  Gieo hạt & Làm đất vi sinh
-                </option>
-                <option value="Tưới nước & Bón phân hữu cơ">
-                  Tưới nước & Bón phân hữu cơ
-                </option>
-                <option value="Kiểm tra sâu bệnh sinh học">
-                  Kiểm tra sâu bệnh sinh học
-                </option>
-                <option value="Kiểm định mẫu đất/nước VietGAP">
-                  Kiểm định mẫu đất/nước VietGAP
-                </option>
-                <option value="Thu hoạch & Sơ chế đóng gói">
-                  Thu hoạch & Sơ chế đóng gói
-                </option>
+                {STAGE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -197,32 +293,108 @@ export default function FarmingLogsPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-emerald-400 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
-              <ImagePlus size={18} />
-              <span>Đính kèm ảnh / video thực tế</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={mediaItems.length >= MAX_MEDIA_FILES}
+                className="inline-flex items-center gap-2 rounded-xl border border-dashed border-emerald-400 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <ImagePlus size={18} />
+                <span>
+                  Đính kèm nhiều ảnh / video ({mediaItems.length}/{MAX_MEDIA_FILES})
+                </span>
+              </button>
+
               <input
+                ref={fileInputRef}
                 type="file"
-                accept="image/*,video/*"
-                onChange={handleImageChange}
+                multiple
+                accept="image/png,image/jpeg,image/webp,image/jpg,video/mp4,video/quicktime,video/webm"
+                onChange={handleMediaFilesChange}
                 className="hidden"
               />
-            </label>
+            </div>
 
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+              disabled={saving || batches.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
-              <Send size={16} /> Đăng nhật ký
+              {saving ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Send size={16} />
+              )}{' '}
+              Đăng nhật ký
             </button>
           </div>
 
-          {mediaPreview && (
-            <div className="mt-2">
-              <img
-                src={mediaPreview}
-                alt="Preview"
-                className="h-32 rounded-xl border border-slate-200 object-cover"
-              />
+          {mediaItems.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex items-center justify-between text-xs text-slate-600">
+                <span>Nhấn vào ảnh hoặc video để xem chi tiết</span>
+                <button
+                  type="button"
+                  onClick={clearAllMediaItems}
+                  className="font-semibold text-rose-600 hover:underline"
+                >
+                  Xóa tất cả
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {mediaItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="group relative h-24 w-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewMedia({
+                          url: item.url,
+                          isVideo: item.isVideo,
+                          title: item.name,
+                        })
+                      }
+                      className="relative h-full w-full"
+                      title="Nhấn để xem lớn"
+                    >
+                      {item.isVideo ? (
+                        <>
+                          <video
+                            src={item.url}
+                            muted
+                            className="h-full w-full object-cover"
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
+                            <Play size={22} fill="currentColor" />
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <img
+                            src={item.url}
+                            alt={item.name}
+                            className="h-full w-full object-cover transition group-hover:scale-105"
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
+                            <ZoomIn size={18} className="text-white" />
+                          </span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMediaItem(item.id)}
+                      className="absolute right-1 top-1 rounded-full bg-black/65 p-1 text-white hover:bg-rose-600"
+                      title="Gỡ bỏ tệp này"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </form>
@@ -236,81 +408,119 @@ export default function FarmingLogsPage() {
           </h3>
           <span className="text-xs text-slate-500">
             Thứ tự: Mới nhất → Cũ nhất
+            {totalPages > 1 ? ` • Trang ${safePage} / ${totalPages}` : ''}
           </span>
         </div>
 
-        <div className="space-y-4">
-          {paginatedLogs.map((log) => (
-            <div
-              key={log.id}
-              className="rounded-xl border border-slate-100 bg-slate-50 p-4"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="rounded-md bg-emerald-100 px-2.5 py-0.5 font-mono text-xs font-bold text-emerald-800">
-                  {log.batch_code}
-                </span>
-                <span className="flex items-center gap-1 text-xs font-semibold text-slate-600">
-                  <Calendar size={14} className="text-emerald-600" /> {log.created_at}
-                </span>
-              </div>
-              <h4 className="mt-2 font-bold text-slate-800">{log.action}</h4>
-              <p className="mt-1 text-sm text-slate-600">{log.note}</p>
-              {log.media && (
-                <img
-                  src={log.media}
-                  alt={log.action}
-                  className="mt-3 max-h-48 rounded-lg object-cover"
-                />
-              )}
-            </div>
-          ))}
-        </div>
+        {loading ? (
+          <p className="text-sm text-slate-500">Đang tải nhật ký canh tác...</p>
+        ) : sortedLogs.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
+            Chưa có nhật ký canh tác nào được ghi nhận.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {paginatedLogs.map((log) => {
+              const mediaUrls = Array.isArray(log.media_urls)
+                ? log.media_urls.filter(Boolean)
+                : [];
 
-        {totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
-            <span className="text-xs text-slate-500">
-              Trang <strong>{currentPage}</strong> / {totalPages}
-            </span>
+              return (
+                <div
+                  key={log.id}
+                  className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-emerald-100 px-2.5 py-0.5 font-mono text-xs font-bold text-emerald-800">
+                        {log.batch?.batch_code || `BATCH #${log.batch_id}`}
+                      </span>
+                      {log.batch?.product?.name && (
+                        <span className="text-xs font-semibold text-slate-600">
+                          {log.batch.product.name}
+                        </span>
+                      )}
+                    </div>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <ChevronLeft size={14} /> Trước
-              </button>
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                        <Calendar size={14} className="text-emerald-600" />{' '}
+                        {String(log.logged_at || log.created_at || '').slice(0, 10)}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={deletingLogId === log.id}
+                        onClick={() => handleDeleteLog(log.id)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        <Trash2 size={12} /> Xóa
+                      </button>
+                    </div>
+                  </div>
 
-              {Array.from({ length: totalPages }, (_, idx) => idx + 1).map(
-                (pageNum) => (
-                  <button
-                    key={pageNum}
-                    type="button"
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`h-8 w-8 rounded-lg text-xs font-bold transition ${
-                      currentPage === pageNum
-                        ? 'bg-emerald-600 text-white'
-                        : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                )
-              )}
+                  <h4 className="mt-2 font-bold text-slate-800">{log.title}</h4>
+                  <p className="mt-1 text-sm text-slate-600">{log.description}</p>
 
-              <button
-                type="button"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-              >
-                Sau <ChevronRight size={14} />
-              </button>
-            </div>
+                  {mediaUrls.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2.5">
+                      {mediaUrls.map((url, idx) => {
+                        const isVideo = isVideoMediaUrl(url);
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() =>
+                              setPreviewMedia({
+                                url,
+                                isVideo,
+                                title: `${log.title} (${idx + 1}/${mediaUrls.length})`,
+                              })
+                            }
+                            className="group relative h-28 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                            title={isVideo ? 'Nhấn để phát video' : 'Nhấn để xem ảnh lớn'}
+                          >
+                            {isVideo ? (
+                              <>
+                                <video
+                                  src={url}
+                                  muted
+                                  className="h-full w-full object-cover"
+                                />
+                                <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
+                                  <Play size={24} fill="currentColor" />
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <img
+                                  src={url}
+                                  alt={`${log.title} ${idx + 1}`}
+                                  className="h-full w-full object-cover transition group-hover:scale-105"
+                                />
+                                <span className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition group-hover:opacity-100">
+                                  <ZoomIn size={18} className="text-white" />
+                                </span>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
+
+        <Pagination
+          currentPage={safePage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       </div>
+
+      <MediaLightbox media={previewMedia} onClose={() => setPreviewMedia(null)} />
     </div>
   );
 }

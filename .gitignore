@@ -17,6 +17,8 @@ dist/
 # Cache
 backend/bootstrap/cache/*.php
 !backend/bootstrap/cache/.gitignore
+backend/storage/framework/views/*.php
+backend/public/uploads/
 
 # OS Files
 .DS_Store

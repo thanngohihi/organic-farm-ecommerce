@@ -23,14 +23,16 @@ class MoMoPaymentService
             'momo.endpoint',
             'https://test-payment.momo.vn/v2/gateway/api/create'
         );
-        $this->ipnUrl = config(
-            'momo.ipn_url',
-            url('/api/v1/payments/momo/ipn-callback')
-        );
-        $this->redirectUrl = config(
-            'momo.redirect_url',
-            url('/payment/momo/result')
-        );
+
+        $configuredIpn = trim((string) config('momo.ipn_url', ''));
+        $this->ipnUrl = $configuredIpn !== ''
+            ? $configuredIpn
+            : url('/api/v1/payments/momo/ipn-callback');
+
+        $configuredRedirect = trim((string) config('momo.redirect_url', ''));
+        $this->redirectUrl = $configuredRedirect !== ''
+            ? $configuredRedirect
+            : (rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/') . '/');
     }
 
     /**
@@ -49,6 +51,7 @@ class MoMoPaymentService
             return $this->mockPaymentResponse($orderCode, (int) $amount);
         }
 
+        $amountInt = (int) round($amount);
         $requestId = $orderCode . '_' . time();
         $orderInfo = "Thanh toán đơn hàng Nông Sản Hữu Cơ #{$orderCode}";
         $requestType = 'captureWallet';
@@ -56,7 +59,7 @@ class MoMoPaymentService
 
         // Tạo chữ ký HMAC-SHA256.
         $rawHash = "accessKey={$this->accessKey}"
-            . "&amount={$amount}"
+            . "&amount={$amountInt}"
             . "&extraData={$extraData}"
             . "&ipnUrl={$this->ipnUrl}"
             . "&orderId={$orderCode}"
@@ -73,7 +76,7 @@ class MoMoPaymentService
             'partnerName' => 'Organic Farm E-Commerce',
             'storeId' => 'OrganicFarmStore',
             'requestId' => $requestId,
-            'amount' => (int) $amount,
+            'amount' => $amountInt,
             'orderId' => $orderCode,
             'orderInfo' => $orderInfo,
             'redirectUrl' => $this->redirectUrl,
@@ -95,10 +98,21 @@ class MoMoPaymentService
             ) {
                 Log::info("[MoMo] Tạo link thành công: {$orderCode}");
 
+                $payUrl = $response['payUrl'] ?? '';
+                $rawQr = $response['qrCodeUrl'] ?? '';
+                $qrCodeUrl = '';
+                if (!empty($rawQr)) {
+                    $qrCodeUrl = preg_match('/^https?:\/\//i', $rawQr)
+                        ? $rawQr
+                        : 'https://api.qrserver.com/v1/create-qr-code/?data=' . urlencode($rawQr) . '&size=200x200';
+                } elseif (!empty($payUrl)) {
+                    $qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?data=' . urlencode($payUrl) . '&size=200x200';
+                }
+
                 return [
                     'status' => 'success',
-                    'pay_url' => $response['payUrl'] ?? '',
-                    'qr_code_url' => $response['qrCodeUrl'] ?? '',
+                    'pay_url' => $payUrl,
+                    'qr_code_url' => $qrCodeUrl,
                     'request_id' => $requestId,
                     'order_code' => $orderCode,
                     'amount' => (int) $amount,
@@ -193,10 +207,9 @@ class MoMoPaymentService
             'status' => 'success',
             'order_code' => $orderCode,
             'amount' => $amount,
-            'pay_url' => 'http://localhost:8000/api/v1/momo-mock-checkout?order_code='
-                . urlencode($orderCode),
-            'qr_code_url' => 'https://api.qrserver.com/v1/create-qr-code/?data=MOMO-'
-                . urlencode($orderCode)
+            'pay_url' => url('/api/v1/momo-mock-checkout?order_code=' . urlencode($orderCode)),
+            'qr_code_url' => 'https://api.qrserver.com/v1/create-qr-code/?data='
+                . urlencode(url('/api/v1/momo-mock-checkout?order_code=' . $orderCode))
                 . '&size=200x200',
             'request_id' => $orderCode . '_mock',
             'message' => 'Khoi tao thanh toan MoMo thanh cong',
