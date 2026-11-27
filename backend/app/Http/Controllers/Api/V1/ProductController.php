@@ -272,4 +272,51 @@ class ProductController extends Controller
             ],
         ], 201);
     }
+
+    /**
+     * GET /api/v1/products/{id}/stock
+     * Kiểm tra tồn kho FEFO thời gian thực trước khi thêm vào giỏ hàng / tăng số lượng.
+     */
+    public function checkStock(Request $request, int $id)
+    {
+        $product = Product::query()
+            ->where('is_active', true)
+            ->find($id);
+
+        if (!$product) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Sản phẩm không tồn tại hoặc đã ngừng kinh doanh.',
+            ], 404);
+        }
+
+        $today = now()->toDateString();
+        $activeBatches = DB::table('batches')
+            ->where('product_id', $product->id)
+            ->whereIn('status', ['con_hang', 'sap_het_han'])
+            ->whereDate('expiry_date', '>=', $today)
+            ->where('current_quantity', '>', 0)
+            ->orderBy('expiry_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $availableStock = round((float) $activeBatches->sum('current_quantity'), 2);
+        $requestedQty = max(0.1, (float) $request->query('requested_quantity', 1));
+        $sufficient = $availableStock > 0 && $availableStock >= $requestedQty;
+        $fefoBatch = $activeBatches->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'product_id'         => $product->id,
+                'product_name'       => $product->name,
+                'unit'               => $product->unit,
+                'available_stock'    => $availableStock,
+                'requested_quantity' => $requestedQty,
+                'sufficient'         => $sufficient,
+                'fefo_batch_code'    => $fefoBatch?->batch_code,
+                'expiry_date'        => $fefoBatch?->expiry_date,
+            ],
+        ], 200);
+    }
 }

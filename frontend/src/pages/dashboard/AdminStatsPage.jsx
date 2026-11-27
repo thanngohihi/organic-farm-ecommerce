@@ -18,6 +18,10 @@ import {
   AlertTriangle,
   RefreshCw,
   Tag,
+  Package,
+  Search,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { getAuthHeaders } from '../../services/api';
 
@@ -28,21 +32,26 @@ export default function AdminStatsPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [updatingBatchId, setUpdatingBatchId] = useState(null);
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventoryFilter, setInventoryFilter] = useState('all');
+  const [expandedProductId, setExpandedProductId] = useState(null);
 
   const loadStats = async () => {
     setLoading(true);
     setErrorMsg('');
     try {
       const headers = getAuthHeaders();
-      const [statsRes, alertsRes] = await Promise.all([
+      const [statsRes, alertsRes, inventoryRes] = await Promise.all([
         axios.get(`${API_URL}/admin/dashboard-stats`, { headers }),
         axios.get(`${API_URL}/alerts/near-expiry`, { headers }),
+        axios.get(`${API_URL}/admin/inventory`, { headers }),
       ]);
 
       const statsPayload = statsRes.data?.data ?? {};
       const alertsList = Array.isArray(alertsRes.data?.data)
         ? alertsRes.data.data
         : [];
+      const invPayload = inventoryRes.data?.data ?? {};
 
       setData({
         kpis: statsPayload.kpis || {
@@ -55,6 +64,15 @@ export default function AdminStatsPage() {
           ? statsPayload.revenue_chart
           : [],
         near_expiry_batches: alertsList,
+        inventory_summary: invPayload.summary || {
+          total_products: 0,
+          in_stock: 0,
+          low_stock: 0,
+          out_of_stock: 0,
+        },
+        product_inventory: Array.isArray(invPayload.products)
+          ? invPayload.products
+          : [],
       });
     } catch (err) {
       console.error('Lỗi tải Admin Dashboard Stats:', err);
@@ -107,7 +125,25 @@ export default function AdminStatsPage() {
     );
   }
 
-  const { kpis, revenue_chart, near_expiry_batches } = data;
+  const {
+    kpis,
+    revenue_chart,
+    near_expiry_batches,
+    inventory_summary = { total_products: 0, in_stock: 0, low_stock: 0, out_of_stock: 0 },
+    product_inventory = [],
+  } = data;
+
+  const filteredInventory = product_inventory.filter((item) => {
+    const matchFilter =
+      inventoryFilter === 'all' || item.stock_status === inventoryFilter;
+    const kw = inventorySearch.trim().toLowerCase();
+    const matchSearch =
+      !kw ||
+      String(item.name || '').toLowerCase().includes(kw) ||
+      String(item.sku || '').toLowerCase().includes(kw) ||
+      String(item.category_name || '').toLowerCase().includes(kw);
+    return matchFilter && matchSearch;
+  });
 
   return (
     <div className="space-y-6">
@@ -284,6 +320,207 @@ export default function AdminStatsPage() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* KIỂM TRA SỐ LƯỢNG SẢN PHẨM TRONG KHO */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Package className="text-emerald-600" size={22} />
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">
+                Kiểm tra Số lượng Sản phẩm trong Kho ({filteredInventory.length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Tổng hợp tồn kho thực tế từ các lô hàng còn hạn &amp; chi tiết từng lô FEFO.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700">
+              Tổng SP: {inventory_summary.total_products}
+            </span>
+            <span className="rounded-lg bg-emerald-100 px-2.5 py-1 text-emerald-800">
+              Đủ hàng: {inventory_summary.in_stock}
+            </span>
+            <span className="rounded-lg bg-amber-100 px-2.5 py-1 text-amber-800">
+              Sắp hết (≤15): {inventory_summary.low_stock}
+            </span>
+            <span className="rounded-lg bg-rose-100 px-2.5 py-1 text-rose-700">
+              Hết hàng: {inventory_summary.out_of_stock}
+            </span>
+          </div>
+        </div>
+
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              type="text"
+              value={inventorySearch}
+              onChange={(e) => setInventorySearch(e.target.value)}
+              placeholder="Tìm theo tên sản phẩm, SKU, danh mục..."
+              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'all', label: 'Tất cả' },
+              { id: 'con_hang', label: 'Đủ hàng' },
+              { id: 'sap_het', label: 'Sắp hết' },
+              { id: 'het_hang', label: 'Hết hàng' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setInventoryFilter(tab.id)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  inventoryFilter === tab.id
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredInventory.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-500">
+            Không tìm thấy sản phẩm nào khớp điều kiện lọc.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
+                  <th className="p-2.5">Sản phẩm</th>
+                  <th className="p-2.5">Danh mục</th>
+                  <th className="p-2.5">Tồn kho khả dụng</th>
+                  <th className="p-2.5">Số lô còn hạn</th>
+                  <th className="p-2.5">Lô xuất FEFO tiếp</th>
+                  <th className="p-2.5">Đã hao hụt</th>
+                  <th className="p-2.5">Trạng thái</th>
+                  <th className="p-2.5 text-right">Chi tiết lô</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredInventory.map((item) => {
+                  const isExpanded = expandedProductId === item.id;
+                  const statusBadge =
+                    item.stock_status === 'het_hang'
+                      ? { label: 'Hết hàng', cls: 'bg-rose-100 text-rose-700' }
+                      : item.stock_status === 'sap_het'
+                      ? { label: 'Sắp hết hàng', cls: 'bg-amber-100 text-amber-800' }
+                      : { label: 'Còn hàng', cls: 'bg-emerald-100 text-emerald-700' };
+
+                  return (
+                    <React.Fragment key={item.id}>
+                      <tr className="hover:bg-slate-50/70">
+                        <td className="p-2.5">
+                          <p className="font-bold text-slate-800">{item.name}</p>
+                          <p className="font-mono text-xs text-slate-400">
+                            {item.sku} • {Number(item.base_price || 0).toLocaleString('vi-VN')}đ/{item.unit}
+                          </p>
+                        </td>
+                        <td className="p-2.5 text-xs font-medium text-slate-600">
+                          {item.category_name}
+                        </td>
+                        <td className="p-2.5 font-extrabold text-slate-900">
+                          {item.available_stock} {item.unit}
+                        </td>
+                        <td className="p-2.5 text-xs text-slate-700">
+                          {item.active_batches_count} lô
+                          {item.near_expiry_batches > 0 && (
+                            <span className="ml-1 text-amber-700 font-semibold">
+                              ({item.near_expiry_batches} cận date)
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-xs">
+                          {item.nearest_batch_code ? (
+                            <>
+                              <span className="font-mono font-semibold text-emerald-700">
+                                {item.nearest_batch_code}
+                              </span>
+                              <span className="block text-[11px] text-slate-500">
+                                HSD: {item.nearest_expiry_date}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">Không có lô</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-xs text-rose-600 font-semibold">
+                          {item.total_wasted_qty} {item.unit}
+                        </td>
+                        <td className="p-2.5">
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${statusBadge.cls}`}>
+                            {statusBadge.label}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedProductId(isExpanded ? null : item.id)
+                            }
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            {item.batches.length} lô
+                          </button>
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={8} className="bg-slate-50 px-4 py-3">
+                            {item.batches.length === 0 ? (
+                              <p className="text-xs text-slate-500">
+                                Sản phẩm này chưa từng khởi tạo lô hàng nào.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {item.batches.map((b) => (
+                                  <div
+                                    key={b.id}
+                                    className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-mono font-bold text-emerald-700">
+                                        {b.batch_code}
+                                      </span>
+                                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                        {b.status}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-slate-700">
+                                      Còn: <strong>{b.current_quantity}</strong> / {b.initial_quantity} {item.unit}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                      Thu hoạch: {b.harvest_date || '—'} • HSD: {b.expiry_date || '—'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
