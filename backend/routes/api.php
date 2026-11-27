@@ -43,6 +43,7 @@ Route::prefix('v1')->group(function () {
     // API Public: Danh mục, Danh sách sản phẩm & Truy xuất nguồn gốc QR
     Route::get('/categories', [ProductController::class, 'categories']);
     Route::get('/products', [ProductController::class, 'index']);
+    Route::get('/products/{id}/stock', [ProductController::class, 'checkStock']);
     Route::get('/batches/qr/{id}', [BatchController::class, 'showByQr']);
     Route::get('/batches/{batchId}/farming-logs', [FarmingLogController::class, 'indexByBatch']);
 
@@ -150,6 +151,7 @@ Route::prefix('v1')->group(function () {
             Route::patch('/accounts/{id}/toggle-active', [AuthController::class, 'toggleAccountActive']);
             Route::delete('/accounts/{id}', [AuthController::class, 'destroyAccount']);
             Route::get('/dashboard-stats', [AlertsAndStatsController::class, 'dashboardStats']);
+            Route::get('/inventory', [AlertsAndStatsController::class, 'productInventory']);
         });
 
     });

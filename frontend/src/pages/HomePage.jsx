@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
     Search,
@@ -14,7 +14,9 @@ import {
     X,
     ArrowRight,
     Copy,
-    Check
+    Check,
+    BookOpen,
+    Sprout
 } from 'lucide-react';
 
 import axios from 'axios';
@@ -35,17 +37,15 @@ export default function HomePage({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    // Giỏ hàng nổi
-    const [showFloatingCart, setShowFloatingCart] = useState(false);
+    // Trạng thái thêm vào giỏ (AJAX checking tồn kho + Loading Spinner)
+    const [addingProductId, setAddingProductId] = useState(null);
 
-    // Popup QR
+    // Popup QR & Popup Chi tiết sản phẩm (kèm Nhật ký canh tác)
     const [qrProduct, setQrProduct] = useState(null);
     const [copied, setCopied] = useState(false);
-
-    // Ref cho thanh tìm kiếm để lăn chuột xuống/lên tự dừng mượt mà
-    const searchSectionRef = useRef(null);
-    const isAutoScrollingRef = useRef(false);
-    const scrollRafRef = useRef(null);
+    const [detailProduct, setDetailProduct] = useState(null);
+    const [detailLogs, setDetailLogs] = useState([]);
+    const [detailLoading, setDetailLoading] = useState(false);
 
     // =====================================
     // LẤY SẢN PHẨM TỪ LARAVEL API
@@ -142,123 +142,6 @@ export default function HomePage({
     }, []);
 
     // =====================================
-    // HIỆN GIỎ HÀNG KHI CUỘN ĐẾN SẢN PHẨM
-    // =====================================
-
-    useEffect(() => {
-
-        const handleScroll = () => {
-            const productsSection = document.getElementById('products');
-
-            if (!productsSection) return;
-
-            const rect = productsSection.getBoundingClientRect();
-
-            setShowFloatingCart(
-                rect.top < window.innerHeight * 0.7
-            );
-        };
-
-        window.addEventListener('scroll', handleScroll);
-
-        handleScroll();
-
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-        };
-
-    }, []);
-
-    // =====================================
-    // LĂN CHUỘT 1 LẦN TỰ CUỘN CHẬM XUỐNG THANH TÌM KIẾM & LÊN ĐẦU TRANG
-    // =====================================
-
-    useEffect(() => {
-        const stopScrollAnimation = () => {
-            if (scrollRafRef.current !== null) {
-                cancelAnimationFrame(scrollRafRef.current);
-                scrollRafRef.current = null;
-            }
-            isAutoScrollingRef.current = false;
-        };
-
-        const animateScrollTo = (targetY, duration = 1200) => {
-            stopScrollAnimation();
-            const startY = window.scrollY;
-            const distance = targetY - startY;
-            if (Math.abs(distance) < 2) return;
-
-            isAutoScrollingRef.current = true;
-            const startTime = performance.now();
-
-            const easeInOutCubic = (t) =>
-                t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-
-            const step = (now) => {
-                const elapsed = now - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                const eased = easeInOutCubic(progress);
-
-                window.scrollTo({
-                    top: Math.round(startY + distance * eased),
-                    behavior: 'auto',
-                });
-
-                if (progress < 1) {
-                    scrollRafRef.current = requestAnimationFrame(step);
-                } else {
-                    window.scrollTo({ top: targetY, behavior: 'auto' });
-                    scrollRafRef.current = null;
-                    isAutoScrollingRef.current = false;
-                }
-            };
-
-            scrollRafRef.current = requestAnimationFrame(step);
-        };
-
-        const handleWheel = (e) => {
-            if (qrProduct) {
-                stopScrollAnimation();
-                return;
-            }
-            if (e.deltaY === 0) return;
-
-            const searchEl = searchSectionRef.current;
-            if (!searchEl) return;
-
-            const headerEl = document.querySelector('header');
-            const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 72;
-            const searchTop = window.scrollY + searchEl.getBoundingClientRect().top;
-            // Dừng ngay phía trên thanh tìm kiếm một khoảng thoáng (~24px dưới header)
-            const targetTop = Math.max(0, Math.round(searchTop - headerHeight - 24));
-
-            if (isAutoScrollingRef.current) {
-                e.preventDefault();
-                return;
-            }
-
-            // Lăn xuống khi đang ở vùng banner đầu trang -> cuộn chậm tới ngay trên thanh tìm kiếm
-            if (e.deltaY > 0 && window.scrollY < targetTop - 16) {
-                e.preventDefault();
-                animateScrollTo(targetTop, 1200);
-                return;
-            }
-
-            // Lăn lên khi đang ở vùng quanh thanh tìm kiếm trở lên -> cuộn chậm về đầu trang (0)
-            if (e.deltaY < 0 && window.scrollY > 8 && window.scrollY <= targetTop + 140) {
-                e.preventDefault();
-                animateScrollTo(0, 1200);
-            }
-        };
-
-        window.addEventListener('wheel', handleWheel, { passive: false });
-        return () => {
-            window.removeEventListener('wheel', handleWheel);
-            stopScrollAnimation();
-        };
-    }, [qrProduct]);
-
-    // =====================================
     // DANH MỤC
     // =====================================
 
@@ -300,47 +183,60 @@ export default function HomePage({
     };
 
     // =====================================
-    // THÊM VÀO GIỎ HÀNG
+    // THÊM VÀO GIỎ HÀNG (AJAX + SPINNER)
     // =====================================
 
-    const handleAddToCart = (product) => {
+    const handleAddToCart = async (product) => {
 
         if (!addToCart) {
             alert('Chức năng giỏ hàng chưa được kết nối!');
             return;
         }
 
-        if (
-            !product.batch ||
-            product.batch === 'N/A' ||
-            product.current_quantity <= 0
-        ) {
-            alert('Sản phẩm hiện chưa có lô hàng còn tồn kho.');
-            return;
+        if (addingProductId === product.id) return;
+
+        setAddingProductId(product.id);
+        try {
+            const result = await addToCart(product);
+            if (result && typeof result.available_stock === 'number') {
+                setProducts((prev) =>
+                    prev.map((item) =>
+                        Number(item.id) === Number(product.id)
+                            ? { ...item, current_quantity: result.available_stock }
+                            : item
+                    )
+                );
+            }
+        } finally {
+            setAddingProductId(null);
         }
+    };
 
-        if (
-            product.expDays !== null &&
-            product.expDays < 0
-        ) {
-            alert('Sản phẩm đã hết hạn sử dụng.');
-            return;
+    // =====================================
+    // MỞ CHI TIẾT SẢN PHẨM & NHẬT KÝ CANH TÁC
+    // =====================================
+
+    const handleOpenDetail = async (product) => {
+        setDetailProduct(product);
+        setDetailLogs([]);
+
+        if (!product?.batch || product.batch === 'N/A') return;
+
+        setDetailLoading(true);
+        try {
+            const res = await axios.get(
+                `${API_URL}/batches/qr/${encodeURIComponent(product.batch)}`
+            );
+            const data = res.data?.data ?? res.data;
+            const logs = Array.isArray(data?.farming_logs)
+                ? data.farming_logs
+                : [];
+            setDetailLogs(logs);
+        } catch {
+            setDetailLogs([]);
+        } finally {
+            setDetailLoading(false);
         }
-
-        const existing = cartItems.find(
-            item => Number(item.id) === Number(product.id)
-        );
-
-        const currentQuantity = existing
-            ? Number(existing.quantity || 0)
-            : 0;
-
-        if (currentQuantity + 1 > product.current_quantity) {
-            alert('Số lượng tồn kho không đủ!');
-            return;
-        }
-
-        addToCart(product);
     };
 
     // =====================================
@@ -481,7 +377,7 @@ export default function HomePage({
 
             {/* TÌM KIẾM */}
 
-            <section ref={searchSectionRef} className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
+            <section className="relative z-10 mx-auto -mt-8 max-w-4xl px-4">
 
                 <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-lg">
 
@@ -635,7 +531,10 @@ export default function HomePage({
 
                                 {/* ẢNH */}
 
-                                <div className="relative h-64 overflow-hidden bg-gray-100">
+                                <div
+                                    onClick={() => handleOpenDetail(p)}
+                                    className="relative h-64 cursor-pointer overflow-hidden bg-gray-100"
+                                >
 
                                     {p.image ? (
 
@@ -681,7 +580,10 @@ export default function HomePage({
 
                                     <button
                                         type="button"
-                                        onClick={() => handleOpenQr(p)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenQr(p);
+                                        }}
                                         disabled={!p.batch || p.batch === 'N/A'}
                                         title="Xem mã QR và mã lô"
                                         aria-label={`Xem mã QR ${p.name}`}
@@ -696,11 +598,24 @@ export default function HomePage({
 
                                 <div className="p-5">
 
-                                    <span className="text-xs font-semibold uppercase tracking-wide text-green-600">
-                                        {p.category}
-                                    </span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-green-600">
+                                            {p.category}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenDetail(p)}
+                                            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline"
+                                        >
+                                            <BookOpen size={13} />
+                                            Chi tiết &amp; Nhật ký
+                                        </button>
+                                    </div>
 
-                                    <h3 className="mb-3 mt-2 text-xl font-bold text-gray-800">
+                                    <h3
+                                        onClick={() => handleOpenDetail(p)}
+                                        className="mb-3 mt-2 cursor-pointer text-xl font-bold text-gray-800 transition hover:text-emerald-700"
+                                    >
                                         {p.name}
                                     </h3>
 
@@ -757,25 +672,39 @@ export default function HomePage({
                                     {/* THÊM GIỎ */}
 
                                     <button
+                                        type="button"
                                         onClick={() => handleAddToCart(p)}
                                         disabled={
+                                            addingProductId === p.id ||
                                             !p.batch ||
                                             p.batch === 'N/A' ||
                                             p.current_quantity <= 0 ||
                                             (p.expDays !== null && p.expDays < 0)
                                         }
-                                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                                        className={`flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed ${
+                                            addingProductId === p.id
+                                                ? 'opacity-70 bg-green-600'
+                                                : 'disabled:bg-gray-400'
+                                        }`}
                                     >
 
-                                        <ShoppingCart size={19} />
-
-                                        {!p.batch ||
-                                        p.batch === 'N/A' ||
-                                        p.current_quantity <= 0
-                                            ? 'Tạm hết hàng'
-                                            : (p.expDays !== null && p.expDays < 0)
-                                                ? 'Sản phẩm hết hạn'
-                                                : 'Thêm vào giỏ hàng'}
+                                        {addingProductId === p.id ? (
+                                            <>
+                                                <Loader2 size={19} className="animate-spin" />
+                                                Đang kiểm tra kho...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ShoppingCart size={19} />
+                                                {!p.batch ||
+                                                p.batch === 'N/A' ||
+                                                p.current_quantity <= 0
+                                                    ? 'Tạm hết hàng'
+                                                    : (p.expDays !== null && p.expDays < 0)
+                                                        ? 'Sản phẩm hết hạn'
+                                                        : 'Thêm vào giỏ hàng'}
+                                            </>
+                                        )}
 
                                     </button>
 
@@ -824,31 +753,163 @@ export default function HomePage({
 
             </section>
 
-            {/* GIỎ HÀNG NỔI */}
+            {/* POPUP CHI TIẾT SẢN PHẨM & NHẬT KÝ CANH TÁC */}
 
-            {showFloatingCart && (
-
-                <button
-                    onClick={handleGoToCart}
-                    className="fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-full bg-green-600 px-5 py-4 text-white shadow-2xl transition-all duration-300 hover:scale-110 hover:bg-green-700 animate-in fade-in slide-in-from-bottom-4"
-                    title="Đi đến giỏ hàng"
-                    aria-label={`Đi đến giỏ hàng, có ${cartCount} sản phẩm`}
+            {detailProduct && (
+                <div
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setDetailProduct(null);
+                        }
+                    }}
                 >
+                    <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6">
+                        <button
+                            type="button"
+                            onClick={() => setDetailProduct(null)}
+                            className="absolute right-4 top-4 rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                            aria-label="Đóng chi tiết sản phẩm"
+                        >
+                            <X size={20} />
+                        </button>
 
-                    <div className="relative">
-                        <ShoppingCart size={28} />
+                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                            <div className="overflow-hidden rounded-2xl bg-gray-100 h-56 sm:h-64">
+                                {detailProduct.image ? (
+                                    <img
+                                        src={detailProduct.image}
+                                        alt={detailProduct.name}
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="flex h-full items-center justify-center">
+                                        <Leaf size={48} className="text-green-400" />
+                                    </div>
+                                )}
+                            </div>
 
-                        <span className="absolute -right-3 -top-3 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white ring-2 ring-white">
-                            {cartCount}
-                        </span>
+                            <div className="flex flex-col justify-between">
+                                <div>
+                                    <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                                        {detailProduct.category} {detailProduct.cert ? `• ${detailProduct.cert}` : ''}
+                                    </span>
+
+                                    <h2 className="mt-2.5 text-xl font-extrabold text-gray-900">
+                                        {detailProduct.name}
+                                    </h2>
+
+                                    <p className="mt-2 text-2xl font-extrabold text-emerald-700">
+                                        {Number(detailProduct.price || 0).toLocaleString('vi-VN')}đ
+                                        <span className="ml-1 text-sm font-normal text-gray-500">
+                                            / {detailProduct.unit}
+                                        </span>
+                                    </p>
+
+                                    <div className="mt-3 space-y-1 text-xs text-gray-600">
+                                        <p>Lô FEFO đang bán: <strong className="font-mono text-emerald-700">{detailProduct.batch || 'N/A'}</strong></p>
+                                        <p>Tồn kho khả dụng: <strong>{detailProduct.current_quantity} {detailProduct.unit}</strong></p>
+                                        <p>Hạn sử dụng: <strong>{detailProduct.expiry_date || '—'}</strong></p>
+                                    </div>
+
+                                    {detailProduct.description && (
+                                        <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                                            {detailProduct.description}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="mt-4 flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAddToCart(detailProduct)}
+                                        disabled={
+                                            addingProductId === detailProduct.id ||
+                                            !detailProduct.batch ||
+                                            detailProduct.batch === 'N/A' ||
+                                            detailProduct.current_quantity <= 0
+                                        }
+                                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                                    >
+                                        {addingProductId === detailProduct.id ? (
+                                            <Loader2 size={16} className="animate-spin" />
+                                        ) : (
+                                            <ShoppingCart size={16} />
+                                        )}
+                                        Thêm vào giỏ
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const batchCode = detailProduct.batch;
+                                            setDetailProduct(null);
+                                            if (batchCode && onNavigateQr) onNavigateQr(batchCode);
+                                        }}
+                                        disabled={!detailProduct.batch || detailProduct.batch === 'N/A'}
+                                        className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                    >
+                                        <QrCode size={16} />
+                                        Truy xuất QR
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* NHẬT KÝ CANH TÁC & QR TRONG CHI TIẾT */}
+                        <div className="mt-5 grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 sm:grid-cols-3">
+                            <div className="sm:col-span-2">
+                                <h3 className="mb-2.5 flex items-center gap-1.5 text-sm font-bold text-gray-800">
+                                    <Sprout size={16} className="text-emerald-600" />
+                                    Nhật ký canh tác lô {detailProduct.batch || 'N/A'}
+                                </h3>
+                                {detailLoading ? (
+                                    <div className="flex items-center gap-2 py-4 text-xs text-gray-500">
+                                        <Loader2 size={15} className="animate-spin text-emerald-600" />
+                                        Đang tải nhật ký canh tác...
+                                    </div>
+                                ) : detailLogs.length === 0 ? (
+                                    <p className="rounded-xl bg-gray-50 p-3 text-xs text-gray-500">
+                                        Chưa có nhật ký canh tác nào cho lô này.
+                                    </p>
+                                ) : (
+                                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                                        {detailLogs.map((log, i) => (
+                                            <div key={log.id || i} className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-2.5 text-xs">
+                                                <div className="flex items-center justify-between gap-2 font-bold text-emerald-900">
+                                                    <span>{log.title || log.stage || 'Hoạt động canh tác'}</span>
+                                                    <span className="font-normal text-gray-500">
+                                                        {log.logged_at ? String(log.logged_at).slice(0, 10) : ''}
+                                                    </span>
+                                                </div>
+                                                {log.description && (
+                                                    <p className="mt-1 text-gray-600">{log.description}</p>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {detailProduct.batch && detailProduct.batch !== 'N/A' && (
+                                <div className="flex flex-col items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3 text-center">
+                                    <img
+                                        src={
+                                            detailProduct.qr_code_url ||
+                                            `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(
+                                                `${window.location.origin}/traceability/${encodeURIComponent(detailProduct.batch)}`
+                                            )}`
+                                        }
+                                        alt={`QR ${detailProduct.batch}`}
+                                        className="h-28 w-28 rounded-xl border bg-white p-1 object-contain"
+                                    />
+                                    <p className="mt-2 text-[11px] text-gray-600">
+                                        Quét QR để mở trang truy xuất nguồn gốc
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-
-                    <span className="font-bold">
-                        Giỏ hàng
-                    </span>
-
-                </button>
-
+                </div>
             )}
 
             {/* POPUP QR */}
@@ -916,7 +977,12 @@ export default function HomePage({
                             <div className="rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm">
 
                                 <img
-                                    src={qrProduct.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(qrProduct.batch)}`}
+                                    src={
+                                        qrProduct.qr_code_url ||
+                                        `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(
+                                            `${window.location.origin}/traceability/${encodeURIComponent(qrProduct.batch)}`
+                                        )}`
+                                    }
                                     alt={`QR truy xuất ${qrProduct.batch}`}
                                     className="h-36 w-36 object-contain"
                                 />

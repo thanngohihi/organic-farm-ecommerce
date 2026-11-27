@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 import axios from 'axios';
-import { getAuthHeaders } from '../services/api';
+import { getAuthHeaders, showToast } from '../services/api';
 import DeliveryAddressMap from '../components/DeliveryAddressMap';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
@@ -58,6 +58,7 @@ export default function CartCheckoutPage({
   const [calcLoading, setCalcLoading] = useState(false);
   const [shippingInfo, setShippingInfo] = useState(null);
   const [shippingType, setShippingType] = useState('binh_thuong');
+  const [updatingItemId, setUpdatingItemId] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [orderResult, setOrderResult] = useState(null);
@@ -208,36 +209,68 @@ export default function CartCheckoutPage({
   // TĂNG / GIẢM SỐ LƯỢNG
   // ---------------------------------------------
 
-  const updateQuantity = (id, delta) => {
-    setCartItems(prev =>
-      prev.map(item => {
-        if (item.id !== id) return item;
+  const updateQuantity = async (id, delta) => {
+    const targetItem = items.find((item) => item.id === id);
+    if (!targetItem) return;
 
-        const newQuantity =
-          Number(item.quantity) + delta;
+    const newQuantity = Number(targetItem.quantity) + delta;
+    if (newQuantity <= 0) return;
 
-        const stock = Number(item.stock);
+    if (delta > 0) {
+      setUpdatingItemId(id);
+      try {
+        const res = await axios.get(
+          `${API_URL}/products/${encodeURIComponent(id)}/stock`,
+          { params: { requested_quantity: newQuantity } }
+        );
+        const stockInfo = res.data?.data;
+        const liveStock = Number(stockInfo?.available_stock ?? targetItem.stock ?? 0);
 
-        if (newQuantity <= 0) return item;
-
-        if (
-          delta > 0 &&
-          Number.isFinite(stock) &&
-          stock >= 0 &&
-          newQuantity > stock
-        ) {
-          alert('Số lượng vượt quá hàng tồn kho!');
-          return item;
+        if (!stockInfo?.sufficient || newQuantity > liveStock) {
+          showToast(
+            `Tồn kho "${targetItem.name}" hiện chỉ còn ${liveStock} ${targetItem.unit || 'kg'}.`,
+            'error'
+          );
+          setCartItems((prev) =>
+            prev.map((item) =>
+              item.id === id ? { ...item, stock: liveStock } : item
+            )
+          );
+          return;
         }
 
-        return {
-          ...item,
-          quantity: newQuantity,
-        };
-      })
-    );
+        setCartItems((prev) =>
+          prev.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  quantity: newQuantity,
+                  stock: liveStock,
+                  batch_code: stockInfo?.fefo_batch_code || item.batch_code,
+                }
+              : item
+          )
+        );
+        setShippingInfo(null);
+        showToast(`Đã cập nhật "${targetItem.name}" (${newQuantity} ${targetItem.unit || 'kg'}).`, 'success');
+      } catch (err) {
+        showToast(
+          err.response?.data?.message || 'Không thể kiểm tra tồn kho sản phẩm lúc này.',
+          'error'
+        );
+      } finally {
+        setUpdatingItemId(null);
+      }
+      return;
+    }
 
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, quantity: newQuantity } : item
+      )
+    );
     setShippingInfo(null);
+    showToast(`Đã cập nhật "${targetItem.name}" (${newQuantity} ${targetItem.unit || 'kg'}).`, 'success');
   };
 
   // ---------------------------------------------
@@ -682,15 +715,19 @@ export default function CartCheckoutPage({
                             onClick={() =>
                               updateQuantity(item.id, -1)
                             }
-                            disabled={item.quantity <= 1}
+                            disabled={item.quantity <= 1 || updatingItemId === item.id}
                             className="px-3 py-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-40"
                             title="Giảm số lượng"
                           >
                             <Minus size={13} />
                           </button>
 
-                          <span className="px-3 text-sm font-bold">
-                            {item.quantity}
+                          <span className="px-3 text-sm font-bold min-w-[36px] text-center">
+                            {updatingItemId === item.id ? (
+                              <Loader2 size={14} className="inline animate-spin text-emerald-600" />
+                            ) : (
+                              item.quantity
+                            )}
                           </span>
 
                           <button
@@ -699,8 +736,9 @@ export default function CartCheckoutPage({
                               updateQuantity(item.id, 1)
                             }
                             disabled={
-                              item.stock != null &&
-                              item.quantity >= Number(item.stock)
+                              updatingItemId === item.id ||
+                              (item.stock != null &&
+                                item.quantity >= Number(item.stock))
                             }
                             className="px-3 py-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-40"
                             title="Tăng số lượng"

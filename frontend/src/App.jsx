@@ -5,6 +5,7 @@ import axios from 'axios';
 import {
     Sprout,
     ShoppingBag,
+    ShoppingCart,
     BookOpen,
     QrCode,
     BarChart3,
@@ -19,6 +20,8 @@ import {
     User,
     Receipt,
     ChevronDown,
+    CheckCircle2,
+    X,
 } from 'lucide-react';
 
 import FarmBatchesPage from './pages/dashboard/FarmBatchesPage';
@@ -39,7 +42,7 @@ import TransactionHistoryPage from './pages/TransactionHistoryPage';
 
 import AuthModal from './components/AuthModal';
 import Footer from './components/Footer';
-import { getSavedAuthToken, syncAxiosAuthToken } from './services/api';
+import { getSavedAuthToken, syncAxiosAuthToken, showToast } from './services/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 
@@ -141,7 +144,6 @@ const NAV_ITEMS = {
         { id: 'home', label: 'Trang chủ & Danh mục', icon: Sprout },
         { id: 'story', label: 'Câu chuyện thương hiệu', icon: BookOpen },
         { id: 'qr', label: 'Truy xuất nguồn gốc', icon: QrCode },
-        { id: 'cart', label: 'Giỏ hàng & Đặt hàng', icon: ShoppingBag },
         { id: 'subscription', label: 'Gói nông sản định kỳ', icon: RefreshCw },
     ],
 
@@ -206,6 +208,7 @@ export default function App() {
     const [authOpen, setAuthOpen] = useState(false);
 
     const [loginNotice, setLoginNotice] = useState(null);
+    const [loginNoticeTitle, setLoginNoticeTitle] = useState('Bạn cần đăng nhập');
 
     const [pendingPage, setPendingPage] = useState(null);
 
@@ -214,6 +217,7 @@ export default function App() {
     const [userMenuOpen, setUserMenuOpen] = useState(false);
 
     const [headerAvatarError, setHeaderAvatarError] = useState(false);
+    const [toast, setToast] = useState(null);
 
     const activeRole = getUserRole(currentUser);
 
@@ -251,15 +255,51 @@ export default function App() {
                 }
             })
             .catch((err) => {
-                if (err?.response?.status === 401) {
+                if (err?.response?.status === 401 || err?.response?.status === 419) {
                     syncAxiosAuthToken(null);
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('token');
                     localStorage.removeItem('user_token');
                     localStorage.removeItem('organic_current_user');
                     setCurrentUser(null);
+                    setLoginNoticeTitle('Phiên đăng nhập đã hết hạn');
+                    setLoginNotice('Phiên đăng nhập hoặc Token bảo mật đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.');
                 }
             });
+    }, []);
+
+    useEffect(() => {
+        let timerId;
+        const handleToastEvent = (event) => {
+            const detail = event.detail || {};
+            if (!detail.message) return;
+            setToast({
+                id: Date.now(),
+                message: detail.message,
+                type: detail.type || 'success',
+            });
+            clearTimeout(timerId);
+            timerId = setTimeout(() => setToast(null), 3200);
+        };
+
+        const handleSessionExpired = (event) => {
+            setCurrentUser(null);
+            setUserMenuOpen(false);
+            setAuthOpen(false);
+            setLoginNoticeTitle('Phiên đăng nhập đã hết hạn');
+            setLoginNotice(
+                event.detail?.message ||
+                    'Phiên đăng nhập hoặc Token bảo mật đã hết hạn. Vui lòng đăng nhập lại!'
+            );
+        };
+
+        window.addEventListener('organic:toast', handleToastEvent);
+        window.addEventListener('organic:session-expired', handleSessionExpired);
+        return () => {
+            clearTimeout(timerId);
+            window.removeEventListener('organic:toast', handleToastEvent);
+            window.removeEventListener('organic:session-expired', handleSessionExpired);
+        };
     }, []);
 
     // ==================================================
@@ -318,7 +358,8 @@ export default function App() {
     // YÊU CẦU ĐĂNG NHẬP
     // ==================================================
 
-    const requireLogin = (message, targetPage = null) => {
+    const requireLogin = (message, targetPage = null, title = 'Bạn cần đăng nhập') => {
+        setLoginNoticeTitle(title);
         setLoginNotice(message);
         setPendingPage(targetPage);
     };
@@ -345,61 +386,101 @@ export default function App() {
     // THÊM VÀO GIỎ
     // ==================================================
 
-    const handleAddToCart = (product) => {
+    const handleAddToCart = async (product) => {
         if (!currentUser) {
             requireLogin(
                 'Bạn cần đăng nhập để mua hàng và thêm sản phẩm vào giỏ.',
                 'cart'
             );
-            return;
+            return { ok: false };
         }
 
         if (!product || product.id == null) {
-            alert('Sản phẩm không hợp lệ!');
-            return;
+            showToast('Sản phẩm không hợp lệ!', 'error');
+            return { ok: false };
         }
 
-        setCartItems((previousItems) => {
-            const existingItem = previousItems.find(
-                (item) => String(item.id) === String(product.id)
+        const existingItem = cartItems.find(
+            (item) => String(item.id) === String(product.id)
+        );
+        const nextQuantity = existingItem
+            ? Number(existingItem.quantity || 0) + 1
+            : 1;
+
+        try {
+            const res = await axios.get(
+                `${API_URL}/products/${encodeURIComponent(product.id)}/stock`,
+                { params: { requested_quantity: nextQuantity } }
             );
-
-            const nextQuantity = existingItem
-                ? Number(existingItem.quantity || 0) + 1
-                : 1;
-
-            const stock = Number(
+            const stockData = res.data?.data;
+            const liveStock = Number(
+                stockData?.available_stock ??
                 product.stock ??
                 product.current_quantity ??
                 0
             );
 
-            if (stock <= 0) {
-                alert('Sản phẩm hiện đã hết hàng!');
-                return previousItems;
+            if (liveStock <= 0) {
+                showToast('Sản phẩm hiện đã hết hàng trong kho!', 'error');
+                return { ok: false, available_stock: 0 };
             }
 
-            if (nextQuantity > stock) {
-                alert('Sản phẩm không đủ số lượng tồn kho!');
-                return previousItems;
-            }
-
-            if (existingItem) {
-                return previousItems.map((item) =>
-                    String(item.id) === String(product.id)
-                        ? { ...item, quantity: nextQuantity }
-                        : item
+            if (!stockData?.sufficient || nextQuantity > liveStock) {
+                showToast(
+                    `Không đủ tồn kho! "${product.name}" chỉ còn ${liveStock} ${product.unit || 'kg'}.`,
+                    'error'
                 );
+                return { ok: false, available_stock: liveStock };
             }
 
-            return [
-                ...previousItems,
-                {
-                    ...product,
-                    quantity: 1,
-                },
-            ];
-        });
+            setCartItems((previousItems) => {
+                const currentExisting = previousItems.find(
+                    (item) => String(item.id) === String(product.id)
+                );
+                const qtyToSet = currentExisting
+                    ? Number(currentExisting.quantity || 0) + 1
+                    : 1;
+
+                if (qtyToSet > liveStock) {
+                    return previousItems;
+                }
+
+                if (currentExisting) {
+                    return previousItems.map((item) =>
+                        String(item.id) === String(product.id)
+                            ? {
+                                ...item,
+                                quantity: qtyToSet,
+                                stock: liveStock,
+                                batch_code: stockData?.fefo_batch_code || item.batch_code,
+                            }
+                            : item
+                    );
+                }
+
+                return [
+                    ...previousItems,
+                    {
+                        ...product,
+                        stock: liveStock,
+                        batch_code: stockData?.fefo_batch_code || product.batch_code || product.batch,
+                        quantity: 1,
+                    },
+                ];
+            });
+
+            showToast(
+                `Đã thêm "${product.name}" vào giỏ hàng (SL: ${nextQuantity})!`,
+                'success'
+            );
+            return { ok: true, available_stock: liveStock };
+        } catch (err) {
+            showToast(
+                err.response?.data?.message || 'Không thể kiểm tra tồn kho sản phẩm lúc này!',
+                'error'
+            );
+            return { ok: false };
+        }
     };
 
     // ==================================================
@@ -862,33 +943,76 @@ export default function App() {
             {/* HEADER */}
 
             <header className="sticky top-0 z-30 bg-emerald-800 text-white shadow-md">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+                <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-2 px-4 py-2.5 lg:flex-nowrap lg:gap-3">
 
                     {/* LOGO */}
 
                     <button
                         type="button"
                         onClick={handleGoHome}
-                        className="flex items-center gap-3 text-left"
+                        className="order-1 flex shrink-0 items-center gap-2.5 text-left"
                     >
                         <span className="rounded-xl bg-emerald-600 p-2">
-                            <Sprout size={25} />
+                            <Sprout size={22} />
                         </span>
 
                         <span>
-                            <span className="block text-lg font-extrabold leading-tight">
+                            <span className="block whitespace-nowrap text-sm font-extrabold leading-tight xl:text-base">
                                 Organic Farm Ecommerce
                             </span>
 
-                            <span className="block text-xs text-emerald-100">
+                            <span className="hidden whitespace-nowrap text-[11px] text-emerald-100 xl:block">
                                 Từ nông trại đến bàn ăn
                             </span>
                         </span>
                     </button>
 
-                    {/* TÀI KHOẢN */}
+                    {/* MENU ĐIỀU HƯỚNG TRÊN HEADER (DÀNH CHO KHÁCH HÀNG) */}
 
-                    <div className="flex items-center gap-3">
+                    {activeRole === 'customer' && (
+                        <nav className="order-3 flex w-full flex-wrap items-center gap-1 border-t border-emerald-700/70 pt-2 lg:order-2 lg:w-auto lg:flex-nowrap lg:border-t-0 lg:pt-0">
+                            {navItems.map(({ id, label, icon: Icon }) => (
+                                <button
+                                    type="button"
+                                    key={id}
+                                    onClick={() => navigatePage(id)}
+                                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition xl:px-2.5 xl:py-2 xl:text-[13px] ${
+                                        activePage === id
+                                            ? 'bg-white/20 font-bold text-white shadow-sm'
+                                            : 'text-emerald-100 hover:bg-emerald-700/70 hover:text-white'
+                                    }`}
+                                >
+                                    <Icon size={15} className="shrink-0" />
+                                    <span>{label}</span>
+                                </button>
+                            ))}
+                        </nav>
+                    )}
+
+                    {/* GIỎ HÀNG & TÀI KHOẢN */}
+
+                    <div className="order-2 flex shrink-0 items-center gap-2 whitespace-nowrap lg:order-3">
+                        {activeRole === 'customer' && (
+                            <button
+                                type="button"
+                                onClick={handleGoToCart}
+                                title="Giỏ hàng & Đặt hàng"
+                                aria-label={`Giỏ hàng, đang có ${totalCartCount} sản phẩm`}
+                                className={`relative flex items-center justify-center rounded-xl p-2.5 transition ${
+                                    activePage === 'cart'
+                                        ? 'bg-white/25 text-white ring-1 ring-emerald-300'
+                                        : 'bg-emerald-700/70 text-emerald-50 hover:bg-emerald-700'
+                                }`}
+                            >
+                                <ShoppingCart size={20} />
+                                {totalCartCount > 0 && (
+                                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-emerald-800">
+                                        {totalCartCount}
+                                    </span>
+                                )}
+                            </button>
+                        )}
+
                         {currentUser ? (
                             <>
                                 {/* Hover / Click Tên người dùng để mở Frame Menu */}
@@ -915,7 +1039,7 @@ export default function App() {
                                             <UserCircle size={22} className="shrink-0 text-emerald-200" />
                                         )}
 
-                                        <span className="max-w-[140px] truncate sm:max-w-[200px]">
+                                        <span className="max-w-[100px] truncate xl:max-w-[150px]">
                                             {currentUser.full_name ||
                                                 currentUser.name ||
                                                 currentUser.email ||
@@ -1055,39 +1179,9 @@ export default function App() {
             {/* KHÁCH HÀNG */}
 
             {activeRole === 'customer' ? (
-                <>
-                    <nav className="border-b border-emerald-100 bg-white shadow-sm">
-                        <div className="mx-auto flex max-w-7xl flex-wrap items-center px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
-                                {navItems.map(({ id, label, icon: Icon }) => (
-                                    <button
-                                        type="button"
-                                        key={id}
-                                        onClick={() => navigatePage(id)}
-                                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${
-                                            activePage === id
-                                                ? 'bg-emerald-50 font-bold text-emerald-700'
-                                                : 'text-slate-600 hover:bg-slate-50'
-                                        }`}
-                                    >
-                                        <Icon size={17} />
-                                        {label}
-
-                                        {id === 'cart' && totalCartCount > 0 && (
-                                            <span className="ml-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs text-white">
-                                                {totalCartCount}
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </nav>
-
-                    <main className="w-full flex-1">
-                        {renderCustomerPage()}
-                    </main>
-                </>
+                <main className="w-full flex-1">
+                    {renderCustomerPage()}
+                </main>
             ) : (
                 /* NHÂN VIÊN VÀ ADMIN */
 
@@ -1138,7 +1232,7 @@ export default function App() {
                         </div>
 
                         <h3 className="text-center text-xl font-bold text-slate-800">
-                            Bạn cần đăng nhập
+                            {loginNoticeTitle}
                         </h3>
 
                         <p className="mt-3 text-center leading-relaxed text-slate-600">
@@ -1150,6 +1244,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                     setLoginNotice(null);
+                                    setLoginNoticeTitle('Bạn cần đăng nhập');
                                     setPendingPage(null);
                                 }}
                                 className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-600 transition hover:bg-slate-50"
@@ -1161,6 +1256,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                     setLoginNotice(null);
+                                    setLoginNoticeTitle('Bạn cần đăng nhập');
                                     setAuthOpen(true);
                                 }}
                                 className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
@@ -1171,6 +1267,43 @@ export default function App() {
                                 </span>
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TOAST NOTIFICATION GÓC MÀN HÌNH */}
+
+            {toast && (
+                <div className="fixed bottom-5 right-5 z-[80] max-w-sm">
+                    <div
+                        className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 shadow-xl ${
+                            toast.type === 'error'
+                                ? 'border-rose-200 bg-rose-50 text-rose-900'
+                                : 'border-emerald-200 bg-emerald-900 text-white'
+                        }`}
+                    >
+                        {toast.type === 'error' ? (
+                            <AlertCircle size={20} className="mt-0.5 shrink-0 text-rose-600" />
+                        ) : (
+                            <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-emerald-300" />
+                        )}
+
+                        <p className="flex-1 text-xs font-semibold leading-relaxed sm:text-sm">
+                            {toast.message}
+                        </p>
+
+                        <button
+                            type="button"
+                            onClick={() => setToast(null)}
+                            className={`rounded-lg p-1 transition ${
+                                toast.type === 'error'
+                                    ? 'text-rose-500 hover:bg-rose-100'
+                                    : 'text-emerald-200 hover:bg-emerald-800'
+                            }`}
+                            aria-label="Đóng thông báo"
+                        >
+                            <X size={16} />
+                        </button>
                     </div>
                 </div>
             )}

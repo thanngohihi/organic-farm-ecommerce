@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
     Award,
@@ -21,7 +21,23 @@ import {
     TreeDeciduous
 } from 'lucide-react';
 
+const STORY_CHAPTERS = [
+    { id: 'hero', label: 'Khởi nguồn Organic Farm' },
+    { id: 'intro', label: 'Câu chuyện của chúng tôi' },
+    { id: 'values', label: 'Giá trị cốt lõi' },
+    { id: 'process', label: 'Từ hạt giống đến bàn ăn' },
+    { id: 'quality', label: 'Quy trình & Kho FEFO' },
+    { id: 'commitments', label: 'Cam kết khách hàng' },
+    { id: 'cta', label: 'Bắt đầu mua sắm' },
+];
+
 export default function BrandStory() {
+    const sectionRefs = useRef([]);
+    const isAutoScrollingRef = useRef(false);
+    const scrollRafRef = useRef(null);
+    const cooldownUntilRef = useRef(0);
+    const [activeSection, setActiveSection] = useState(0);
+    const [revealedMap, setRevealedMap] = useState({ 0: true });
 
     const features = [
         {
@@ -98,6 +114,191 @@ export default function BrandStory() {
         }
     ];
 
+    const getHeaderHeight = () => {
+        const headerEl = document.querySelector('header');
+        return headerEl ? headerEl.getBoundingClientRect().height : 68;
+    };
+
+    const getSectionTargetY = (index) => {
+        if (index <= 0) return 0;
+        const el = sectionRefs.current[index];
+        if (!el) return 0;
+        const headerHeight = getHeaderHeight();
+        return Math.max(0, Math.round(window.scrollY + el.getBoundingClientRect().top - headerHeight));
+    };
+
+    const scrollToSection = (index, duration = 720) => {
+        const clamped = Math.max(0, Math.min(STORY_CHAPTERS.length - 1, index));
+        const targetY = getSectionTargetY(clamped);
+
+        if (scrollRafRef.current !== null) {
+            cancelAnimationFrame(scrollRafRef.current);
+            scrollRafRef.current = null;
+        }
+
+        setActiveSection(clamped);
+        setRevealedMap((prev) => ({ ...prev, [clamped]: true }));
+
+        const startY = window.scrollY;
+        const distance = targetY - startY;
+        if (Math.abs(distance) < 4) {
+            isAutoScrollingRef.current = false;
+            return;
+        }
+
+        isAutoScrollingRef.current = true;
+        const startTime = performance.now();
+        const easeInOutCubic = (t) =>
+            t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+        const step = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = easeInOutCubic(progress);
+
+            window.scrollTo({
+                top: Math.round(startY + distance * eased),
+                behavior: 'auto',
+            });
+
+            if (progress < 1) {
+                scrollRafRef.current = requestAnimationFrame(step);
+            } else {
+                window.scrollTo({ top: targetY, behavior: 'auto' });
+                scrollRafRef.current = null;
+                isAutoScrollingRef.current = false;
+                cooldownUntilRef.current = performance.now() + 180;
+            }
+        };
+
+        scrollRafRef.current = requestAnimationFrame(step);
+    };
+
+    useEffect(() => {
+        const detectActiveSection = () => {
+            const headerHeight = getHeaderHeight();
+            const probeY = window.scrollY + headerHeight + window.innerHeight * 0.35;
+
+            let detected = 0;
+            sectionRefs.current.forEach((el, idx) => {
+                if (!el) return;
+                const elTop = window.scrollY + el.getBoundingClientRect().top;
+                if (elTop <= probeY) {
+                    detected = idx;
+                }
+            });
+            setActiveSection(detected);
+            setRevealedMap((prev) => (prev[detected] ? prev : { ...prev, [detected]: true }));
+        };
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        const idx = Number(entry.target.getAttribute('data-story-index'));
+                        if (!Number.isNaN(idx)) {
+                            setRevealedMap((prev) => (prev[idx] ? prev : { ...prev, [idx]: true }));
+                        }
+                    }
+                });
+            },
+            { threshold: 0.15 }
+        );
+
+        sectionRefs.current.forEach((el) => {
+            if (el) observer.observe(el);
+        });
+
+        const handleWheel = (e) => {
+            if (window.innerWidth < 768 || e.deltaY === 0) return;
+
+            if (isAutoScrollingRef.current || performance.now() < cooldownUntilRef.current) {
+                e.preventDefault();
+                return;
+            }
+
+            const headerHeight = getHeaderHeight();
+            const lastIndex = STORY_CHAPTERS.length - 1;
+            const lastTargetY = getSectionTargetY(lastIndex);
+
+            // Đang ở vùng cuối trang (gần Footer) và lăn xuống tiếp -> cuộn tự nhiên tới Footer
+            if (e.deltaY > 0 && window.scrollY >= lastTargetY - 24) {
+                return;
+            }
+
+            // Đang ở dưới Footer và lăn lên -> quay lại đúng đầu phần cuối
+            if (e.deltaY < 0 && window.scrollY > lastTargetY + 60) {
+                e.preventDefault();
+                scrollToSection(lastIndex);
+                return;
+            }
+
+            // Đang ở đầu trang và lăn lên -> giữ nguyên tự nhiên
+            if (e.deltaY < 0 && window.scrollY <= 8) {
+                return;
+            }
+
+            // Tìm phần hiện tại dựa vào mép trên sau Header
+            let currentIdx = 0;
+            for (let i = 0; i < sectionRefs.current.length; i++) {
+                const el = sectionRefs.current[i];
+                if (!el) continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.top <= headerHeight + 80) {
+                    currentIdx = i;
+                }
+            }
+
+            const currentEl = sectionRefs.current[currentIdx];
+            if (!currentEl) return;
+            const currentRect = currentEl.getBoundingClientRect();
+
+            if (e.deltaY > 0) {
+                // Nếu phần hiện tại quá cao vượt khỏi đáy màn hình nhiều, cho cuộn đọc nốt phần đó trước
+                if (currentRect.bottom > window.innerHeight + 120) {
+                    return;
+                }
+                if (currentIdx < lastIndex) {
+                    e.preventDefault();
+                    scrollToSection(currentIdx + 1);
+                }
+            } else {
+                // Nếu đã cuộn xuống sâu bên trong 1 phần cao, lăn lên sẽ về đầu chính phần đó trước
+                if (currentRect.top < headerHeight - 100) {
+                    e.preventDefault();
+                    scrollToSection(currentIdx);
+                } else if (currentIdx > 0) {
+                    e.preventDefault();
+                    scrollToSection(currentIdx - 1);
+                } else {
+                    e.preventDefault();
+                    scrollToSection(0);
+                }
+            }
+        };
+
+        window.addEventListener('scroll', detectActiveSection, { passive: true });
+        window.addEventListener('wheel', handleWheel, { passive: false });
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('scroll', detectActiveSection);
+            window.removeEventListener('wheel', handleWheel);
+            if (scrollRafRef.current !== null) {
+                cancelAnimationFrame(scrollRafRef.current);
+                scrollRafRef.current = null;
+            }
+            isAutoScrollingRef.current = false;
+        };
+    }, []);
+
+    const getSectionMotionClass = (index) =>
+        `transition-all duration-700 ${
+            revealedMap[index]
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-6'
+        }`;
+
     const handleShopNow = () => {
         window.dispatchEvent(new CustomEvent('organic:navigate', {
             detail: { page: 'home' }
@@ -110,11 +311,49 @@ export default function BrandStory() {
     };
 
     return (
-        <div className="w-full overflow-hidden bg-white text-slate-800">
+        <div className="relative w-full overflow-hidden bg-white text-slate-800">
+
+            {/* THANH CHUYỂN TỪNG PHẦN BÊN PHẢI */}
+
+            <div className="fixed right-4 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-end gap-2.5 md:flex">
+                {STORY_CHAPTERS.map((chapter, index) => {
+                    const isActive = activeSection === index;
+                    return (
+                        <button
+                            key={chapter.id}
+                            type="button"
+                            onClick={() => scrollToSection(index)}
+                            className="group flex items-center gap-2 focus:outline-none"
+                            aria-label={`Đi tới phần ${index + 1}: ${chapter.label}`}
+                        >
+                            <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition-all ${
+                                    isActive
+                                        ? 'bg-emerald-700 text-white opacity-100 translate-x-0'
+                                        : 'bg-white/95 text-slate-700 opacity-0 translate-x-2 pointer-events-none group-hover:opacity-100 group-hover:translate-x-0'
+                                }`}
+                            >
+                                {index + 1}. {chapter.label}
+                            </span>
+                            <span
+                                className={`block rounded-full border transition-all ${
+                                    isActive
+                                        ? 'h-3.5 w-3.5 border-emerald-200 bg-emerald-600 ring-4 ring-emerald-500/20'
+                                        : 'h-2.5 w-2.5 border-slate-400 bg-white/80 group-hover:scale-125 group-hover:border-emerald-600'
+                                }`}
+                            />
+                        </button>
+                    );
+                })}
+            </div>
 
             {/* ================= HERO ================= */}
 
-            <section className="relative isolate overflow-hidden bg-[#064e35] text-white">
+            <section
+                data-story-index={0}
+                ref={(el) => { sectionRefs.current[0] = el; }}
+                className={`relative isolate overflow-hidden bg-[#064e35] text-white ${getSectionMotionClass(0)}`}
+            >
 
                 <div className="absolute inset-0 -z-10">
                     <div className="absolute -right-32 -top-32 h-[550px] w-[550px] rounded-full border-[80px] border-white/5" />
@@ -295,9 +534,13 @@ export default function BrandStory() {
 
             {/* ================= INTRODUCTION ================= */}
 
-            <section className="px-5 py-20 md:px-8 md:py-28">
+            <section
+                data-story-index={1}
+                ref={(el) => { sectionRefs.current[1] = el; }}
+                className={`px-5 py-24 md:flex md:min-h-[calc(100vh-4rem)] md:items-center md:px-8 md:py-32 ${getSectionMotionClass(1)}`}
+            >
 
-                <div className="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-2">
+                <div className="mx-auto grid w-full max-w-7xl items-center gap-14 lg:grid-cols-2">
 
                     <div className="relative">
 
@@ -384,9 +627,13 @@ export default function BrandStory() {
 
             {/* ================= CORE VALUES ================= */}
 
-            <section className="bg-slate-50 px-5 py-20 md:px-8 md:py-28">
+            <section
+                data-story-index={2}
+                ref={(el) => { sectionRefs.current[2] = el; }}
+                className={`bg-slate-50 px-5 py-28 md:flex md:min-h-[calc(100vh-4rem)] md:items-center md:px-8 md:py-36 ${getSectionMotionClass(2)}`}
+            >
 
-                <div className="mx-auto max-w-7xl">
+                <div className="mx-auto w-full max-w-7xl">
 
                     <div className="mx-auto mb-14 max-w-2xl text-center">
 
@@ -451,11 +698,15 @@ export default function BrandStory() {
 
             {/* ================= FARM PROCESS ================= */}
 
-            <section className="relative overflow-hidden bg-[#073d2b] px-5 py-20 text-white md:px-8 md:py-28">
+            <section
+                data-story-index={3}
+                ref={(el) => { sectionRefs.current[3] = el; }}
+                className={`relative overflow-hidden bg-[#073d2b] px-5 py-28 text-white md:flex md:min-h-[calc(100vh-4rem)] md:items-center md:px-8 md:py-36 ${getSectionMotionClass(3)}`}
+            >
 
                 <div className="absolute -right-40 top-0 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl" />
 
-                <div className="relative mx-auto max-w-7xl">
+                <div className="relative mx-auto w-full max-w-7xl">
 
                     <div className="mx-auto mb-16 max-w-2xl text-center">
 
@@ -528,9 +779,13 @@ export default function BrandStory() {
 
             {/* ================= QUALITY COMMITMENT ================= */}
 
-            <section className="px-5 py-20 md:px-8 md:py-28">
+            <section
+                data-story-index={4}
+                ref={(el) => { sectionRefs.current[4] = el; }}
+                className={`px-5 py-24 md:flex md:min-h-[calc(100vh-4rem)] md:items-center md:px-8 md:py-32 ${getSectionMotionClass(4)}`}
+            >
 
-                <div className="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-2">
+                <div className="mx-auto grid w-full max-w-7xl items-center gap-14 lg:grid-cols-2">
 
                     <div>
 
@@ -675,9 +930,13 @@ export default function BrandStory() {
 
             {/* ================= CUSTOMER COMMITMENTS ================= */}
 
-            <section className="bg-green-50 px-5 py-20 md:px-8 md:py-24">
+            <section
+                data-story-index={5}
+                ref={(el) => { sectionRefs.current[5] = el; }}
+                className={`bg-green-50 px-5 py-28 md:flex md:min-h-[calc(100vh-4rem)] md:items-center md:px-8 md:py-36 ${getSectionMotionClass(5)}`}
+            >
 
-                <div className="mx-auto max-w-7xl">
+                <div className="mx-auto w-full max-w-7xl">
 
                     <div className="mb-14 text-center">
 
@@ -735,9 +994,13 @@ export default function BrandStory() {
 
             {/* ================= FINAL CTA ================= */}
 
-            <section className="px-5 py-20 md:px-8 md:py-28">
+            <section
+                data-story-index={6}
+                ref={(el) => { sectionRefs.current[6] = el; }}
+                className={`px-5 py-24 md:flex md:min-h-[calc(100vh-4rem)] md:items-center md:px-8 md:py-32 ${getSectionMotionClass(6)}`}
+            >
 
-                <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-green-800 via-emerald-800 to-green-950 px-7 py-16 text-center text-white shadow-2xl md:px-16 md:py-24">
+                <div className="relative mx-auto w-full max-w-7xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-green-800 via-emerald-800 to-green-950 px-7 py-16 text-center text-white shadow-2xl md:px-16 md:py-24">
 
                     <div className="absolute -right-20 -top-24 h-80 w-80 rounded-full border-[50px] border-white/5" />
 

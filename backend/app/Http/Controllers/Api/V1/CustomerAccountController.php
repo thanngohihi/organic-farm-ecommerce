@@ -132,14 +132,16 @@ class CustomerAccountController extends Controller
             'order_code'  => ['required', 'string', 'max:50'],
             'reason'      => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'media'       => ['nullable', 'array', 'max:5'],
-            'media.*'     => ['file', 'mimes:jpg,jpeg,png,webp,mp4,mov', 'max:10240'],
+            'media'       => ['required', 'array', 'min:1', 'max:5'],
+            'media.*'     => ['file', 'mimes:jpg,jpeg,png', 'max:5120'],
         ], [
             'order_code.required' => 'Vui lòng cung cấp mã đơn hàng cần khiếu nại.',
             'reason.required'     => 'Vui lòng chọn lý do khiếu nại.',
-            'media.max'           => 'Tối đa 5 tệp hình ảnh/video bằng chứng.',
-            'media.*.mimes'       => 'Chỉ hỗ trợ hình ảnh (JPG, PNG, WEBP) hoặc video (MP4, MOV).',
-            'media.*.max'         => 'Mỗi tệp không được vượt quá 10MB.',
+            'media.required'      => 'Bắt buộc phải tải lên ít nhất 1 hình ảnh minh chứng (.jpg, .png).',
+            'media.min'           => 'Bắt buộc phải tải lên ít nhất 1 hình ảnh minh chứng (.jpg, .png).',
+            'media.max'           => 'Tối đa 5 hình ảnh minh chứng.',
+            'media.*.mimes'       => 'Chỉ hỗ trợ hình ảnh định dạng .jpg hoặc .png.',
+            'media.*.max'         => 'Mỗi hình ảnh minh chứng phải nhỏ hơn 5MB.',
         ]);
 
         $user = $request->user();

@@ -20,7 +20,9 @@ const BASE_API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 const API_URL = `${BASE_API}/complaints`;
 
 const MAX_FILES = 5;
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
+const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png)$/i;
 
 // ======================================================
 // LÝ DO KHIẾU NẠI
@@ -80,14 +82,16 @@ export default function ComplaintPage({
     const validFiles = [];
 
     for (const file of selectedFiles) {
-      if (!file.type.startsWith('image/') &&
-        !file.type.startsWith('video/')) {
-        setErrorMessage('Chỉ hỗ trợ tệp hình ảnh và video.');
+      const mimeOk = ALLOWED_IMAGE_TYPES.includes(String(file.type || '').toLowerCase());
+      const extOk = ALLOWED_IMAGE_EXT.test(String(file.name || ''));
+
+      if (!mimeOk && !extOk) {
+        setErrorMessage('Chỉ chấp nhận tệp hình ảnh định dạng .jpg hoặc .png.');
         continue;
       }
 
-      if (file.size > MAX_FILE_SIZE) {
-        setErrorMessage(`${file.name} vượt quá dung lượng 10MB.`);
+      if (file.size >= MAX_FILE_SIZE) {
+        setErrorMessage(`${file.name} phải có dung lượng nhỏ hơn 5MB.`);
         continue;
       }
 
@@ -144,6 +148,11 @@ export default function ComplaintPage({
 
     if (description.trim().length < 10) {
       setErrorMessage('Mô tả cần có ít nhất 10 ký tự.');
+      return;
+    }
+
+    if (files.length === 0) {
+      setErrorMessage('Bắt buộc phải tải lên ít nhất 1 hình ảnh minh chứng (.jpg, .png).');
       return;
     }
 
@@ -415,13 +424,13 @@ export default function ComplaintPage({
           <div>
 
             <label className="mb-2 block text-sm font-bold text-slate-700">
-              Tải ảnh/video bằng chứng
+              Hình ảnh minh chứng <span className="text-rose-600">* (Bắt buộc)</span>
             </label>
 
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,video/*"
+              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
               multiple
               onChange={handleFileChange}
               className="hidden"
@@ -437,11 +446,11 @@ export default function ComplaintPage({
               <UploadCloud size={30} className="mb-2 text-slate-400" />
 
               <span className="text-sm font-semibold text-slate-700">
-                Chọn ảnh hoặc video
+                Chọn hình ảnh minh chứng (.jpg, .png)
               </span>
 
               <span className="mt-1 text-xs text-slate-400">
-                Tối đa {MAX_FILES} tệp, mỗi tệp không quá 10MB
+                Tối đa {MAX_FILES} ảnh .JPG/.PNG, mỗi ảnh nhỏ hơn 5MB
               </span>
 
             </button>

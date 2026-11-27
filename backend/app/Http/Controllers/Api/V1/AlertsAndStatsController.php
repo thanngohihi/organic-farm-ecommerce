@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Order;
+use App\Models\Product;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -196,6 +197,85 @@ class AlertsAndStatsController extends Controller
                 ],
                 'revenue_by_day' => $revenueByDay,
                 'revenue_chart'  => $revenueChart,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/admin/inventory
+     * Admin kiểm tra tồn kho từng sản phẩm và danh sách lô FEFO trong kho.
+     */
+    public function productInventory()
+    {
+        $this->syncNearExpiryFlags();
+        $today = now()->toDateString();
+
+        $products = Product::query()
+            ->with([
+                'category:id,name',
+                'batches' => fn ($q) => $q->orderBy('expiry_date', 'asc')->orderBy('id', 'asc'),
+            ])
+            ->orderBy('name', 'asc')
+            ->get();
+
+        $inventory = $products->map(function (Product $product) use ($today) {
+            $validBatches = $product->batches->filter(function (Batch $b) use ($today) {
+                $exp = $b->expiry_date?->toDateString();
+                return in_array($b->status, ['con_hang', 'sap_het_han'], true)
+                    && (float) $b->current_quantity > 0
+                    && (!$exp || $exp >= $today);
+            });
+
+            $availableStock = round((float) $validBatches->sum('current_quantity'), 2);
+            $nearExpiryCount = $validBatches->where('status', 'sap_het_han')->count();
+            $totalWasted = round((float) $product->batches->sum('wasted_quantity'), 2);
+            $nearestBatch = $validBatches->first();
+
+            $stockStatus = $availableStock <= 0
+                ? 'het_hang'
+                : ($availableStock <= 15 ? 'sap_het' : 'con_hang');
+
+            return [
+                'id'                      => $product->id,
+                'name'                    => $product->name,
+                'sku'                     => $product->sku,
+                'unit'                    => $product->unit,
+                'base_price'              => (float) $product->base_price,
+                'thumbnail_url'           => $product->thumbnail_url,
+                'category_name'           => $product->category?->name ?? 'Khác',
+                'is_active'               => (bool) $product->is_active,
+                'available_stock'         => $availableStock,
+                'active_batches_count'    => $validBatches->count(),
+                'near_expiry_batches'     => $nearExpiryCount,
+                'total_wasted_qty'        => $totalWasted,
+                'nearest_expiry_date'     => $nearestBatch?->expiry_date?->toDateString(),
+                'nearest_batch_code'      => $nearestBatch?->batch_code,
+                'stock_status'            => $stockStatus,
+                'batches'                 => $product->batches->map(fn (Batch $b) => [
+                    'id'               => $b->id,
+                    'batch_code'       => $b->batch_code,
+                    'initial_quantity' => (float) $b->initial_quantity,
+                    'current_quantity' => (float) $b->current_quantity,
+                    'wasted_quantity'  => (float) $b->wasted_quantity,
+                    'harvest_date'     => $b->harvest_date?->toDateString(),
+                    'expiry_date'      => $b->expiry_date?->toDateString(),
+                    'status'           => $b->status,
+                    'is_flash_sale'    => (bool) $b->is_flash_sale,
+                    'discount_percent' => (int) $b->discount_percent,
+                ])->values(),
+            ];
+        })->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'summary' => [
+                    'total_products'  => $inventory->count(),
+                    'in_stock'        => $inventory->where('stock_status', 'con_hang')->count(),
+                    'low_stock'       => $inventory->where('stock_status', 'sap_het')->count(),
+                    'out_of_stock'    => $inventory->where('stock_status', 'het_hang')->count(),
+                ],
+                'products' => $inventory,
             ],
         ]);
     }

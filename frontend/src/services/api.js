@@ -35,20 +35,78 @@ export const syncAxiosAuthToken = (token) => {
   }
 };
 
+export const showToast = (message, type = 'success') => {
+  if (!message) return;
+  window.dispatchEvent(
+    new CustomEvent('organic:toast', {
+      detail: { message, type },
+    })
+  );
+};
+
 // ===============================
-// 2. INTERCEPTOR - GẮN TOKEN AUTH
+// 2. INTERCEPTOR - GẮN TOKEN & XỬ LÝ HẾT HẠN PHIÊN / 419 CSRF
 // ===============================
 
-api.interceptors.request.use(
-  (config) => {
-    const token = getSavedAuthToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+let lastSessionExpiredAt = 0;
+
+const attachAuthAndExpiryInterceptors = (instance) => {
+  instance.interceptors.request.use(
+    (config) => {
+      const token = getSavedAuthToken();
+      if (token && !config.headers?.Authorization) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      const status = error?.response?.status;
+      const reqUrl = String(error?.config?.url || '');
+      const isAuthCredentialEndpoint =
+        reqUrl.includes('/auth/login') ||
+        reqUrl.includes('/auth/register') ||
+        reqUrl.includes('/auth/forgot-password') ||
+        reqUrl.includes('/auth/logout');
+
+      if ((status === 401 || status === 419) && !isAuthCredentialEndpoint) {
+        const hadToken = Boolean(getSavedAuthToken());
+        if (hadToken || status === 419) {
+          syncAxiosAuthToken(null);
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user_token');
+          localStorage.removeItem('organic_current_user');
+
+          const now = Date.now();
+          if (now - lastSessionExpiredAt > 1500) {
+            lastSessionExpiredAt = now;
+            window.dispatchEvent(
+              new CustomEvent('organic:session-expired', {
+                detail: {
+                  status,
+                  message:
+                    status === 419
+                      ? 'Phiên làm việc (CSRF Token) đã hết hạn do để trang quá lâu. Vui lòng đăng nhập lại!'
+                      : 'Phiên đăng nhập (Token) đã hết hạn. Vui lòng đăng nhập lại để tiếp tục thao tác.',
+                },
+              })
+            );
+          }
+        }
+      }
+
+      return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+  );
+};
+
+attachAuthAndExpiryInterceptors(api);
+attachAuthAndExpiryInterceptors(axios);
 
 // ===============================
 // 3. GET DANH SÁCH SẢN PHẨM
