@@ -67,10 +67,10 @@ export default function Footer() {
                     </h3>
 
                     <ul className="space-y-4 text-sm text-green-100">
-                        <li><a href="/" className="hover:text-green-400">Trang chủ</a></li>
-                        <li><a href="#products" className="hover:text-green-400">Sản phẩm</a></li>
-                        <li><a href="#products" className="hover:text-green-400">Danh mục sản phẩm</a></li>
-                        <li><a href="#footer" className="hover:text-green-400">Về chúng tôi</a></li>
+                        <li><a href="/pages/home" className="hover:text-green-400">Trang chủ</a></li>
+                        <li><a href="/pages/home#products" className="hover:text-green-400">Sản phẩm</a></li>
+                        <li><a href="/pages/story" className="hover:text-green-400">Câu chuyện thương hiệu</a></li>
+                        <li><a href="/pages/qr" className="hover:text-green-400">Truy xuất nguồn gốc</a></li>
                     </ul>
                 </div>
 

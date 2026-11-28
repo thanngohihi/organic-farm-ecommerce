@@ -145,7 +145,7 @@ class SalesController extends Controller
                     $updatePayload['delivery_partner'] = trim($validated['delivery_partner']);
                 } elseif ($nextStatus === 'dang_giao_hang' && empty($order->delivery_partner)) {
                     $updatePayload['delivery_partner'] = ($order->shipping_type === 'hoa_toc')
-                        ? 'Ahamove Hỏa Tốc'
+                        ? 'Grab'
                         : 'Giao nội bộ nông trại';
                 }
 
@@ -422,7 +422,7 @@ class SalesController extends Controller
                         'payment_method'   => $originOrder->payment_method,
                         'payment_status'   => 'da_thanh_toan',
                         'order_status'     => 'da_giao_bu',
-                        'delivery_partner' => 'Ahamove Hỏa Tốc',
+                        'delivery_partner' => 'Grab',
                     ]);
 
                     foreach ($compItemsPayload as $payload) {

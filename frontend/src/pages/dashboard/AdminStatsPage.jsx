@@ -32,6 +32,7 @@ export default function AdminStatsPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [updatingBatchId, setUpdatingBatchId] = useState(null);
+  const [deletingProductId, setDeletingProductId] = useState(null);
   const [inventorySearch, setInventorySearch] = useState('');
   const [inventoryFilter, setInventoryFilter] = useState('all');
   const [expandedProductId, setExpandedProductId] = useState(null);
@@ -106,6 +107,29 @@ export default function AdminStatsPage() {
       alert(err.response?.data?.message || 'Không thể cấu hình Flash Sale.');
     } finally {
       setUpdatingBatchId(null);
+    }
+  };
+
+  const handleDeleteProduct = async (item) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa sản phẩm "${item.name}" (${item.sku})?\n(Lưu ý: nếu sản phẩm chưa có đơn hàng sẽ xóa vĩnh viễn cùng các lô liên quan; nếu đã có đơn hàng sẽ ẩn ngừng kinh doanh.)`
+    );
+    if (!confirmed) return;
+
+    setDeletingProductId(item.id);
+    try {
+      const res = await axios.delete(`${API_URL}/admin/products/${item.id}`, {
+        headers: getAuthHeaders(),
+      });
+      if (expandedProductId === item.id) {
+        setExpandedProductId(null);
+      }
+      alert(res.data?.message || `Đã xóa sản phẩm "${item.name}".`);
+      await loadStats();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Không thể xóa sản phẩm lúc này.');
+    } finally {
+      setDeletingProductId(null);
     }
   };
 
@@ -411,7 +435,7 @@ export default function AdminStatsPage() {
                   <th className="p-2.5">Lô xuất FEFO tiếp</th>
                   <th className="p-2.5">Đã hao hụt</th>
                   <th className="p-2.5">Trạng thái</th>
-                  <th className="p-2.5 text-right">Chi tiết lô</th>
+                  <th className="p-2.5 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -470,16 +494,28 @@ export default function AdminStatsPage() {
                           </span>
                         </td>
                         <td className="p-2.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedProductId(isExpanded ? null : item.id)
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            {item.batches.length} lô
-                          </button>
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedProductId(isExpanded ? null : item.id)
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            >
+                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              {item.batches.length} lô
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingProductId === item.id}
+                              onClick={() => handleDeleteProduct(item)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                              title={`Xóa sản phẩm ${item.name}`}
+                            >
+                              <Trash2 size={13} />
+                              {deletingProductId === item.id ? 'Đang xóa...' : 'Xóa'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 

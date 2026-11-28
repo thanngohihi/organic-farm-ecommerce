@@ -68,7 +68,11 @@ class OrderController extends Controller
                         throw new RuntimeException("Sản phẩm ID {$item['product_id']} không tồn tại hoặc đã ngừng kinh doanh.");
                     }
 
-                    $quantity = round((float) $item['quantity'], 2);
+                    $quantity = Product::validateQuantityForUnit(
+                        (float) $item['quantity'],
+                        $product->unit,
+                        "Số lượng sản phẩm \"{$product->name}\""
+                    );
                     $fefoResult = $this->fefoService->exportByFefo($product->id, $quantity);
                     $basePrice = (float) $product->base_price;
 

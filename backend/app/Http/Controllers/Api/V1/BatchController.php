@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\Product;
 use App\Services\FefoWarehouseService;
 use App\Services\QrTraceabilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class BatchController extends Controller
@@ -20,6 +22,8 @@ class BatchController extends Controller
     // GET /api/v1/farm/batches
     public function index(Request $request)
     {
+        Batch::syncExpiryStatuses();
+
         $query = Batch::query()
             ->with(['product:id,category_id,name,sku,unit,base_price,thumbnail_url', 'product.category:id,name', 'farmStaff:id,full_name'])
             ->orderBy('expiry_date', 'asc')
@@ -42,17 +46,36 @@ class BatchController extends Controller
     // POST /api/v1/farm/batches
     public function store(Request $request)
     {
+        $today = now()->toDateString();
+
         $data = $request->validate([
             'product_id'       => ['required', 'integer', 'exists:products,id'],
             'harvest_date'     => ['required', 'date'],
-            'expiry_date'      => ['required', 'date', 'after:harvest_date'],
+            'expiry_date'      => ['required', 'date', "after:{$today}", 'after:harvest_date'],
             'initial_quantity' => ['required', 'numeric', 'min:0.01'],
             'qr_format'        => ['nullable', 'in:svg,png'],
+        ], [
+            'expiry_date.after' => 'Hạn sử dụng FEFO phải lớn hơn ngày hiện tại và lớn hơn ngày thu hoạch.',
         ]);
 
+        $product = Product::query()->findOrFail($data['product_id']);
+        try {
+            $normalizedQty = Product::validateQuantityForUnit(
+                (float) $data['initial_quantity'],
+                $product->unit,
+                'Số lượng nhập kho'
+            );
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages([
+                'initial_quantity' => [$e->getMessage()],
+            ]);
+        }
+
+        $data['initial_quantity'] = $normalizedQty;
+        $initialExpiryState = Batch::resolveInitialStateForExpiry($data['expiry_date']);
         $batchCode = 'BATCH-' . now()->format('Ymd') . '-' . strtoupper(bin2hex(random_bytes(2)));
 
-        $result = DB::transaction(function () use ($batchCode, $data, $request) {
+        $result = DB::transaction(function () use ($batchCode, $data, $request, $initialExpiryState) {
             $batch = Batch::query()->create([
                 'batch_code'       => $batchCode,
                 'product_id'       => $data['product_id'],
@@ -62,7 +85,9 @@ class BatchController extends Controller
                 'initial_quantity' => $data['initial_quantity'],
                 'current_quantity' => $data['initial_quantity'],
                 'wasted_quantity'  => 0,
-                'status'           => 'con_hang',
+                'status'           => $initialExpiryState['status'],
+                'is_flash_sale'    => $initialExpiryState['is_flash_sale'],
+                'discount_percent' => $initialExpiryState['discount_percent'],
             ]);
 
             $qr = $this->qrService->generateBatchQr($batch, $data['qr_format'] ?? 'svg');
@@ -73,9 +98,13 @@ class BatchController extends Controller
             ];
         });
 
+        $message = $initialExpiryState['is_flash_sale']
+            ? "Tạo lô hàng thành công! Do HSD trong vòng 3 ngày tới, lô được tự động bật Siêu Sale (-{$initialExpiryState['discount_percent']}%)."
+            : 'Tạo lô hàng và sinh mã QR thành công';
+
         return response()->json([
             'status'  => 'success',
-            'message' => 'Tạo lô hàng và sinh mã QR thành công',
+            'message' => $message,
             'data'    => $result['batch'],
             'qr'      => $result['qr'],
         ], 201);

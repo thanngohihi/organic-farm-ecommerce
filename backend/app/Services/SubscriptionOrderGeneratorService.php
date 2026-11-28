@@ -84,8 +84,8 @@ class SubscriptionOrderGeneratorService
                         ->whereIn('batches.status', ['con_hang', 'sap_het_han'])
                         ->where('batches.current_quantity', '>', 0)
                         ->whereDate('batches.expiry_date', '>=', $today)
-                        ->groupBy('batches.product_id', 'products.name', 'products.base_price')
-                        ->selectRaw('batches.product_id, products.name, products.base_price, SUM(batches.current_quantity) as total_qty, MIN(batches.expiry_date) as min_expiry')
+                        ->groupBy('batches.product_id', 'products.name', 'products.unit', 'products.base_price')
+                        ->selectRaw('batches.product_id, products.name, products.unit, products.base_price, SUM(batches.current_quantity) as total_qty, MIN(batches.expiry_date) as min_expiry')
                         ->orderBy('min_expiry', 'asc')
                         ->get();
 
@@ -113,7 +113,10 @@ class SubscriptionOrderGeneratorService
                             break;
                         }
 
-                        $takeQty = round(min((float) $prod->total_qty, $remainingToAllocate), 2);
+                        $rawTakeQty = min((float) $prod->total_qty, $remainingToAllocate);
+                        $takeQty = \App\Models\Product::allowsDecimalQuantity($prod->unit ?? 'kg')
+                            ? round($rawTakeQty, 2)
+                            : floor($rawTakeQty);
                         if ($takeQty <= 0) {
                             continue;
                         }

@@ -22,9 +22,47 @@ import Pagination from '../../components/Pagination';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
 const ITEMS_PER_PAGE = 5;
+const ALLOWED_UNITS = [
+  'kg',
+  'gram',
+  'hộp 250g',
+  'hộp 500g',
+  'bó',
+  'túi 500g',
+  'túi 1kg',
+  'khay',
+  'thùng',
+  'trái',
+  'quả',
+  'củ',
+  'nải',
+  'chai',
+];
+const DECIMAL_UNITS = ['kg', 'gram'];
+const allowsDecimalUnit = (unit) =>
+  DECIMAL_UNITS.includes(String(unit || '').trim().toLowerCase());
+
+const formatLocalDate = (dateObj) => {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getNextDayStr = (dateStr, fallbackStr) => {
+  if (!dateStr) return fallbackStr;
+  const parsed = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return fallbackStr;
+  parsed.setDate(parsed.getDate() + 1);
+  return formatLocalDate(parsed);
+};
 
 export default function FarmBatchesPage() {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayDate = new Date();
+  const todayStr = formatLocalDate(todayDate);
+  const tomorrowDate = new Date(todayDate);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = formatLocalDate(tomorrowDate);
 
   const [activeSection, setActiveSection] = useState('categories'); // 'categories' | 'products' | 'batches'
 
@@ -41,7 +79,6 @@ export default function FarmBatchesPage() {
 
   // Form tạo Danh mục mới
   const [categoryName, setCategoryName] = useState('');
-  const [categoryDesc, setCategoryDesc] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
   const [deletingCategoryId, setDeletingCategoryId] = useState(null);
 
@@ -156,14 +193,12 @@ export default function FarmBatchesPage() {
         `${API_URL}/farm/categories`,
         {
           name: categoryName.trim(),
-          description: categoryDesc.trim() || null,
         },
         { headers: getAuthHeaders() }
       );
 
       const created = res.data?.data;
       setCategoryName('');
-      setCategoryDesc('');
       setCategoryPage(1);
 
       await loadFarmData();
@@ -250,6 +285,10 @@ export default function FarmBatchesPage() {
       alert('Vui lòng tạo hoặc chọn danh mục cho sản phẩm!');
       return;
     }
+    if (!ALLOWED_UNITS.includes(productForm.unit)) {
+      alert('Vui lòng chọn đúng đơn vị tính hợp lệ trong danh sách!');
+      return;
+    }
     if (productForm.base_price === '' || Number(productForm.base_price) < 0) {
       alert('Vui lòng nhập giá bán hợp lệ!');
       return;
@@ -321,12 +360,34 @@ export default function FarmBatchesPage() {
       alert('Vui lòng thêm và chọn sản phẩm trước khi tạo lô hàng!');
       return;
     }
+
+    const selectedProduct = products.find(
+      (p) => String(p.id) === String(batchForm.product_id)
+    );
+    const unitLabel = selectedProduct?.unit || 'kg';
+    const qty = Number(batchForm.initial_quantity);
+
+    if (!Number.isFinite(qty) || qty <= 0) {
+      alert('Số lượng nhập kho phải lớn hơn 0!');
+      return;
+    }
+    if (!allowsDecimalUnit(unitLabel) && !Number.isInteger(qty)) {
+      alert(
+        `Đơn vị "${unitLabel}" không được nhập số thực (chỉ cho phép số nguyên)!`
+      );
+      return;
+    }
+
     if (batchForm.harvest_date < todayStr) {
       alert('Ngày thu hoạch phải từ hôm nay trở đi!');
       return;
     }
+    if (!batchForm.expiry_date || batchForm.expiry_date <= todayStr) {
+      alert('Hạn sử dụng FEFO phải lớn hơn ngày hiện tại!');
+      return;
+    }
     if (batchForm.expiry_date <= batchForm.harvest_date) {
-      alert('Hạn sử dụng phải lớn hơn ngày thu hoạch!');
+      alert('Hạn sử dụng FEFO phải lớn hơn ngày thu hoạch!');
       return;
     }
 
@@ -354,7 +415,8 @@ export default function FarmBatchesPage() {
 
       await loadFarmData();
       alert(
-        `Hệ thống đã tự động khởi tạo mã lô ${newBatch?.batch_code || ''} và sinh mã QR thành công!`
+        res.data?.message ||
+          `Hệ thống đã tự động khởi tạo mã lô ${newBatch?.batch_code || ''} và sinh mã QR thành công!`
       );
     } catch (err) {
       const msg =
@@ -381,9 +443,16 @@ export default function FarmBatchesPage() {
     e.preventDefault();
     const qty = Number(wasteQty);
     const currentQty = Number(wasteModalBatch?.current_quantity ?? 0);
+    const wasteUnit = wasteModalBatch?.product?.unit || 'kg';
 
-    if (!qty || qty <= 0 || qty > currentQty) {
+    if (!Number.isFinite(qty) || qty <= 0 || qty > currentQty) {
       alert('Số lượng xuất hủy không hợp lệ hoặc vượt quá tồn kho!');
+      return;
+    }
+    if (!allowsDecimalUnit(wasteUnit) && !Number.isInteger(qty)) {
+      alert(
+        `Đơn vị "${wasteUnit}" không được nhập số thực (chỉ cho phép số nguyên)!`
+      );
       return;
     }
 
@@ -411,33 +480,46 @@ export default function FarmBatchesPage() {
   };
 
   const resolveBatchStatus = (batch) => {
-    if (batch.status === 'het_han') {
+    if (batch.status === 'qua_han' || batch.status === 'het_han') {
       return {
-        label: 'Hết hạn',
+        label: 'Quá hạn (Ngừng bán)',
         cls: 'bg-rose-100 text-rose-800',
         icon: AlertTriangle,
       };
     }
-    if (batch.is_flash_sale || batch.status === 'sap_het_han') {
+    if (batch.status === 'het_hang' || batch.status === 'da_huy') {
       return {
-        label: 'Sắp hết hạn',
-        cls: 'bg-amber-100 text-amber-800',
-        icon: AlertTriangle,
-      };
-    }
-    if (batch.status === 'da_huy') {
-      return {
-        label: 'Đã hủy / hết',
+        label: 'Hết hàng / Đã xuất hết',
         cls: 'bg-slate-200 text-slate-700',
         icon: Trash2,
       };
     }
+    if (batch.is_flash_sale || batch.status === 'sap_het_han') {
+      const discount = Number(batch.discount_percent || 0);
+      return {
+        label: discount > 0 ? `Siêu Sale -${discount}%` : 'Sắp hết hạn',
+        cls: 'bg-amber-100 text-amber-800',
+        icon: AlertTriangle,
+      };
+    }
     return {
-      label: 'Đạt chuẩn',
+      label: 'Đạt chuẩn (Giá gốc)',
       cls: 'bg-emerald-100 text-emerald-800',
       icon: CheckCircle2,
     };
   };
+
+  const selectedBatchProduct =
+    products.find((p) => String(p.id) === String(batchForm.product_id)) || null;
+  const selectedBatchUnit = selectedBatchProduct?.unit || 'kg';
+  const isDecimalBatchUnit = allowsDecimalUnit(selectedBatchUnit);
+
+  const minExpiryAfterHarvest = getNextDayStr(batchForm.harvest_date || todayStr, tomorrowStr);
+  const minExpiryStr =
+    minExpiryAfterHarvest > tomorrowStr ? minExpiryAfterHarvest : tomorrowStr;
+
+  const wasteBatchUnit = wasteModalBatch?.product?.unit || 'kg';
+  const isDecimalWasteUnit = allowsDecimalUnit(wasteBatchUnit);
 
   // Tính phân trang cho 3 danh sách (tối đa 5 mục / trang)
   const totalCategoryPages = Math.max(1, Math.ceil(categories.length / ITEMS_PER_PAGE));
@@ -549,19 +631,6 @@ export default function FarmBatchesPage() {
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  Mô tả danh mục
-                </label>
-                <input
-                  type="text"
-                  placeholder="Mô tả ngắn về nhóm nông sản..."
-                  value={categoryDesc}
-                  onChange={(e) => setCategoryDesc(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
               <button
                 type="submit"
                 disabled={savingCategory}
@@ -609,11 +678,6 @@ export default function FarmBatchesPage() {
                             {cat.products_count ?? 0} sản phẩm
                           </span>
                         </p>
-                        {cat.description && (
-                          <p className="mt-1 truncate text-xs text-slate-500">
-                            {cat.description}
-                          </p>
-                        )}
                       </div>
 
                       <button
@@ -726,16 +790,20 @@ export default function FarmBatchesPage() {
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
                     Đơn vị tính *
                   </label>
-                  <input
-                    type="text"
-                    placeholder="VD: kg, hộp 500g..."
+                  <select
                     value={productForm.unit}
                     onChange={(e) =>
                       setProductForm({ ...productForm, unit: e.target.value })
                     }
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                     required
-                  />
+                  >
+                    {ALLOWED_UNITS.map((unitOption) => (
+                      <option key={unitOption} value={unitOption}>
+                        {unitOption}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -995,13 +1063,13 @@ export default function FarmBatchesPage() {
 
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-600">
-                    Số lượng nhập kho *
+                    Số lượng nhập kho ({selectedBatchUnit}) *
                   </label>
                   <input
                     type="number"
-                    min="0.1"
-                    step="0.1"
-                    placeholder="VD: 100"
+                    min={isDecimalBatchUnit ? '0.1' : '1'}
+                    step={isDecimalBatchUnit ? '0.1' : '1'}
+                    placeholder={isDecimalBatchUnit ? 'VD: 10.5' : 'VD: 20'}
                     value={batchForm.initial_quantity}
                     onChange={(e) =>
                       setBatchForm({
@@ -1036,7 +1104,7 @@ export default function FarmBatchesPage() {
                   </label>
                   <input
                     type="date"
-                    min={batchForm.harvest_date || todayStr}
+                    min={minExpiryStr}
                     value={batchForm.expiry_date}
                     onChange={(e) =>
                       setBatchForm({ ...batchForm, expiry_date: e.target.value })
@@ -1313,12 +1381,12 @@ export default function FarmBatchesPage() {
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Số lượng hủy
+                  Số lượng hủy ({wasteBatchUnit})
                 </label>
                 <input
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min={isDecimalWasteUnit ? '0.1' : '1'}
+                  step={isDecimalWasteUnit ? '0.1' : '1'}
                   max={Number(wasteModalBatch.current_quantity ?? 0)}
                   value={wasteQty}
                   onChange={(e) => setWasteQty(e.target.value)}

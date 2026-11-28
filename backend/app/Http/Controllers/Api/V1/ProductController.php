@@ -3,15 +3,35 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Batch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\MediaUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class ProductController extends Controller
 {
+    public const ALLOWED_UNITS = [
+        'kg',
+        'gram',
+        'hộp 250g',
+        'hộp 500g',
+        'bó',
+        'túi 500g',
+        'túi 1kg',
+        'khay',
+        'thùng',
+        'trái',
+        'quả',
+        'củ',
+        'nải',
+        'chai',
+    ];
+
     public function __construct(
         private readonly MediaUploadService $mediaUploadService
     ) {}
@@ -108,6 +128,8 @@ class ProductController extends Controller
      */
     public function index()
     {
+        Batch::syncExpiryStatuses();
+
         $products = DB::table('products')
             ->join('categories', 'products.category_id', '=', 'categories.id')
             ->select(
@@ -182,18 +204,25 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+        $request->merge([
+            'unit' => trim((string) $request->input('unit', '')),
+        ]);
+
         $validated = $request->validate([
             'name'          => ['required', 'string', 'max:200'],
             'category_id'   => ['nullable', 'integer', 'exists:categories,id'],
             'category_name' => ['nullable', 'string', 'max:150'],
             'sku'           => ['nullable', 'string', 'max:50'],
-            'unit'          => ['required', 'string', 'max:50'],
+            'unit'          => ['required', 'string', Rule::in(self::ALLOWED_UNITS)],
             'base_price'    => ['required', 'numeric', 'min:0'],
             'certification' => ['nullable', 'string', 'max:100'],
             'description'   => ['nullable', 'string'],
             'thumbnail_url' => ['nullable', 'string', 'max:500'],
             'thumbnail'     => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'image'         => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ], [
+            'unit.required' => 'Vui lòng chọn đơn vị tính hợp lệ.',
+            'unit.in'       => 'Đơn vị tính không hợp lệ! Chỉ chấp nhận các đơn vị chuẩn nông sản (' . implode(', ', self::ALLOWED_UNITS) . ').',
         ]);
 
         if (empty($validated['category_id']) && empty(trim((string) ($validated['category_name'] ?? '')))) {
@@ -290,6 +319,8 @@ class ProductController extends Controller
             ], 404);
         }
 
+        Batch::syncExpiryStatuses();
+
         $today = now()->toDateString();
         $activeBatches = DB::table('batches')
             ->where('product_id', $product->id)
@@ -300,23 +331,83 @@ class ProductController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
-        $availableStock = round((float) $activeBatches->sum('current_quantity'), 2);
-        $requestedQty = max(0.1, (float) $request->query('requested_quantity', 1));
+        $allowsDecimal = Product::allowsDecimalQuantity($product->unit);
+        $availableStock = round((float) $activeBatches->sum('current_quantity'), $allowsDecimal ? 2 : 0);
+
+        try {
+            $requestedQty = Product::validateQuantityForUnit(
+                (float) $request->query('requested_quantity', 1),
+                $product->unit,
+                'Số lượng đặt mua'
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
         $sufficient = $availableStock > 0 && $availableStock >= $requestedQty;
         $fefoBatch = $activeBatches->first();
 
         return response()->json([
             'status' => 'success',
             'data'   => [
-                'product_id'         => $product->id,
-                'product_name'       => $product->name,
-                'unit'               => $product->unit,
-                'available_stock'    => $availableStock,
-                'requested_quantity' => $requestedQty,
-                'sufficient'         => $sufficient,
-                'fefo_batch_code'    => $fefoBatch?->batch_code,
-                'expiry_date'        => $fefoBatch?->expiry_date,
+                'product_id'              => $product->id,
+                'product_name'            => $product->name,
+                'unit'                    => $product->unit,
+                'allows_decimal_quantity' => $allowsDecimal,
+                'available_stock'         => $availableStock,
+                'requested_quantity'      => $requestedQty,
+                'sufficient'              => $sufficient,
+                'fefo_batch_code'         => $fefoBatch?->batch_code,
+                'expiry_date'             => $fefoBatch?->expiry_date,
             ],
+        ], 200);
+    }
+
+    /**
+     * DELETE /api/v1/admin/products/{id}
+     * Admin xóa sản phẩm khỏi hệ thống (hoặc ẩn ngừng kinh doanh nếu đã phát sinh đơn hàng).
+     */
+    public function destroy(int $id)
+    {
+        $product = Product::query()->find($id);
+        if (!$product) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Không tìm thấy sản phẩm cần xóa.',
+            ], 404);
+        }
+
+        $productName = $product->name;
+
+        $hasOrders = DB::table('order_items')
+            ->where('product_id', $product->id)
+            ->exists()
+            || DB::table('order_items')
+                ->join('batches', 'order_items.batch_id', '=', 'batches.id')
+                ->where('batches.product_id', $product->id)
+                ->exists();
+
+        if ($hasOrders) {
+            $product->update(['is_active' => false]);
+
+            return response()->json([
+                'status'  => 'success',
+                'action'  => 'deactivated',
+                'message' => "Sản phẩm \"{$productName}\" đã từng có trong đơn hàng nên đã được ngừng kinh doanh (ẩn khỏi cửa hàng & kho đang bán) để bảo toàn lịch sử hóa đơn.",
+            ], 200);
+        }
+
+        DB::transaction(function () use ($product) {
+            $product->delete();
+        });
+
+        return response()->json([
+            'status'  => 'success',
+            'action'  => 'deleted',
+            'message' => "Đã xóa sản phẩm \"{$productName}\" khỏi hệ thống.",
         ], 200);
     }
 }

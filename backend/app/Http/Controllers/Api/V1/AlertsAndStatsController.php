@@ -18,29 +18,7 @@ class AlertsAndStatsController extends Controller
      */
     private function syncNearExpiryFlags(): void
     {
-        $today = now()->toDateString();
-        $cutoff = now()->addDays(2)->toDateString();
-
-        Batch::query()
-            ->whereDate('expiry_date', '<', $today)
-            ->where('current_quantity', '>', 0)
-            ->where('status', '!=', 'qua_han')
-            ->update([
-                'status'           => 'qua_han',
-                'is_flash_sale'    => false,
-                'discount_percent' => 0,
-            ]);
-
-        Batch::query()
-            ->whereDate('expiry_date', '>=', $today)
-            ->whereDate('expiry_date', '<=', $cutoff)
-            ->where('current_quantity', '>', 0)
-            ->where('status', 'con_hang')
-            ->update([
-                'status'           => 'sap_het_han',
-                'is_flash_sale'    => true,
-                'discount_percent' => 30,
-            ]);
+        Batch::syncExpiryStatuses();
     }
 
     // GET /api/v1/alerts/near-expiry
@@ -49,7 +27,7 @@ class AlertsAndStatsController extends Controller
         $this->syncNearExpiryFlags();
 
         $today = now()->toDateString();
-        $cutoff = now()->addDays(2)->toDateString();
+        $cutoff = now()->addDays(Batch::FLASH_SALE_WINDOW_DAYS)->toDateString();
 
         $batches = Batch::query()
             ->with('product:id,name,sku,unit,base_price,thumbnail_url')
@@ -81,7 +59,9 @@ class AlertsAndStatsController extends Controller
                     'expiry_date'        => $batch->expiry_date?->toDateString(),
                     'days_remaining'     => $daysRemaining,
                     'days_left'          => $daysRemaining,
-                    'alert_level'        => $daysRemaining < 0 ? 'expired' : ($daysRemaining <= 2 ? 'flash_sale' : 'normal'),
+                    'alert_level'        => $daysRemaining < 0
+                        ? 'expired'
+                        : ($daysRemaining <= Batch::FLASH_SALE_WINDOW_DAYS ? 'flash_sale' : 'normal'),
                     'status'             => $batch->status,
                     'is_flash_sale'      => (bool) $batch->is_flash_sale,
                 ];
@@ -211,6 +191,7 @@ class AlertsAndStatsController extends Controller
         $today = now()->toDateString();
 
         $products = Product::query()
+            ->where('is_active', true)
             ->with([
                 'category:id,name',
                 'batches' => fn ($q) => $q->orderBy('expiry_date', 'asc')->orderBy('id', 'asc'),

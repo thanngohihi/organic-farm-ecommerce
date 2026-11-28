@@ -90,6 +90,75 @@ const LOGIN_REQUIRED_MESSAGES = {
     transactions: 'Vui lòng đăng nhập để xem lịch sử giao dịch của bạn.',
 };
 
+const PAGE_TO_URL_SLUG = {
+    home: 'home',
+    story: 'story',
+    qr: 'qr',
+    cart: 'cart',
+    subscription: 'subscription',
+    complaint: 'complaint',
+    transactions: 'transactions',
+    loyalty: 'loyalty',
+    profile: 'profile',
+    farm_batches: 'farm-batches',
+    farm_logs: 'farm-logs',
+    sales_orders: 'sales-orders',
+    sales_complaints: 'sales-complaints',
+    fefo_dashboard: 'fefo-dashboard',
+    admin_accounts: 'admin-accounts',
+};
+
+const URL_SLUG_TO_PAGE = {
+    ...Object.fromEntries(
+        Object.entries(PAGE_TO_URL_SLUG).map(([page, slug]) => [slug, page])
+    ),
+    farm_batches: 'farm_batches',
+    farm_logs: 'farm_logs',
+    sales_orders: 'sales_orders',
+    sales_complaints: 'sales_complaints',
+    fefo_dashboard: 'fefo_dashboard',
+    admin_accounts: 'admin_accounts',
+    traceability: 'qr',
+    'brand-story': 'story',
+};
+
+const buildUrlForPage = (page, batchCode = '') => {
+    const slug = PAGE_TO_URL_SLUG[page] || 'home';
+    if (page === 'qr' && batchCode) {
+        return `/pages/qr/${encodeURIComponent(String(batchCode))}`;
+    }
+    return `/pages/${slug}`;
+};
+
+const parseLocationState = (pathname = window.location.pathname) => {
+    const cleanPath = String(pathname || '/').replace(/\/+$/, '') || '/';
+
+    const tracePrefix = ['/traceability/', '/trace/', '/pages/qr/', '/pages/traceability/'].find(
+        (prefix) => cleanPath.startsWith(prefix)
+    );
+    if (tracePrefix) {
+        const rawCode = cleanPath.slice(tracePrefix.length).split('/')[0];
+        if (rawCode) {
+            try {
+                return { page: 'qr', batchCode: decodeURIComponent(rawCode) };
+            } catch {
+                return { page: 'qr', batchCode: rawCode };
+            }
+        }
+        return { page: 'qr', batchCode: '' };
+    }
+
+    if (cleanPath.startsWith('/pages/')) {
+        const slug = cleanPath.slice('/pages/'.length).split('/')[0].toLowerCase();
+        const resolvedPage = URL_SLUG_TO_PAGE[slug];
+        if (resolvedPage) {
+            return { page: resolvedPage, batchCode: '' };
+        }
+    }
+
+    return null;
+};
+
 // ======================================================
 // HÀM ĐỌC VAI TRÒ
 // ======================================================
@@ -183,12 +252,18 @@ export default function App() {
         }
     });
 
-    // Giữ nguyên trang hiện tại khi load lại trình duyệt (F5)
+    // Giữ nguyên trang hiện tại theo URL (/pages/...) hoặc localStorage khi load lại trình duyệt (F5)
     const [activePage, setActivePage] = useState(() => {
         const user = getSavedUser();
         const role = getUserRole(user);
-        const savedPage = localStorage.getItem('organic_active_page');
         const allowed = VALID_PAGES_BY_ROLE[role] || [];
+        const fromUrl = parseLocationState();
+
+        if (fromUrl?.page && allowed.includes(fromUrl.page)) {
+            return fromUrl.page;
+        }
+
+        const savedPage = localStorage.getItem('organic_active_page');
 
         if (
             savedPage &&
@@ -201,9 +276,13 @@ export default function App() {
         return ROLE_DEFAULT_PAGE[role] || 'home';
     });
 
-    const [qrBatchCode, setQrBatchCode] = useState(
-        () => localStorage.getItem('organic_qr_batch_code') || ''
-    );
+    const [qrBatchCode, setQrBatchCode] = useState(() => {
+        const fromUrl = parseLocationState();
+        if (fromUrl?.batchCode) {
+            return fromUrl.batchCode;
+        }
+        return localStorage.getItem('organic_qr_batch_code') || '';
+    });
 
     const [authOpen, setAuthOpen] = useState(false);
 
@@ -368,13 +447,31 @@ export default function App() {
     // ĐIỀU HƯỚNG
     // ==================================================
 
-    const navigatePage = (page) => {
+    const syncBrowserUrl = (page, batchCode = '', replace = false) => {
+        const targetPath = buildUrlForPage(page, batchCode);
+        if (window.location.pathname !== targetPath) {
+            window.history[replace ? 'replaceState' : 'pushState'](
+                { page, batchCode },
+                '',
+                targetPath
+            );
+        }
+    };
+
+    const navigatePage = (page, options = {}) => {
         if (LOGIN_REQUIRED_MESSAGES[page] && !currentUser) {
             requireLogin(LOGIN_REQUIRED_MESSAGES[page], page);
             return;
         }
 
         setActivePage(page);
+        const nextBatchCode =
+            options.batchCode !== undefined
+                ? options.batchCode
+                : page === 'qr'
+                    ? qrBatchCode
+                    : '';
+        syncBrowserUrl(page, nextBatchCode, Boolean(options.replace));
 
         window.scrollTo({
             top: 0,
@@ -526,30 +623,38 @@ export default function App() {
     }, [currentUser]);
 
     // ==================================================
-    // ĐỌC MÃ QR TỪ URL
+    // ĐỌC MÃ QR TỪ URL & ĐỒNG BỘ LỊCH SỬ /pages/...
     // ==================================================
 
     useEffect(() => {
         const path = window.location.pathname;
-        const matchedPrefix = ['/traceability/', '/trace/'].find((p) =>
-            path.startsWith(p)
-        );
-
-        if (matchedPrefix) {
-            const codeFromUrl = path.slice(matchedPrefix.length).split('/')[0];
-
-            if (codeFromUrl) {
-                try {
-                    const decodedCode = decodeURIComponent(codeFromUrl);
-
-                    setQrBatchCode(decodedCode);
-                    setActivePage('qr');
-                } catch (error) {
-                    console.error('Không thể đọc mã QR:', error);
-                }
-            }
+        const isLegacyQrPath = path.startsWith('/traceability/') || path.startsWith('/trace/');
+        if (!isLegacyQrPath) {
+            syncBrowserUrl(activePage, activePage === 'qr' ? qrBatchCode : '', true);
         }
-    }, []);
+
+        const handlePopState = () => {
+            const parsed = parseLocationState(window.location.pathname);
+            if (!parsed?.page) return;
+
+            const role = getUserRole(currentUser);
+            const allowed = VALID_PAGES_BY_ROLE[role] || [];
+            if (!allowed.includes(parsed.page)) {
+                const fallbackPage = ROLE_DEFAULT_PAGE[role] || 'home';
+                setActivePage(fallbackPage);
+                syncBrowserUrl(fallbackPage, '', true);
+                return;
+            }
+
+            if (parsed.batchCode) {
+                setQrBatchCode(parsed.batchCode);
+            }
+            setActivePage(parsed.page);
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [currentUser]);
 
     // ==================================================
     // TỔNG GIỎ HÀNG
@@ -584,12 +689,13 @@ export default function App() {
         setCurrentUser(user);
 
         const role = getUserRole(user);
-
-        setActivePage(
+        const nextPage =
             role === 'customer' && pendingPage
                 ? pendingPage
-                : ROLE_DEFAULT_PAGE[role]
-        );
+                : ROLE_DEFAULT_PAGE[role];
+
+        setActivePage(nextPage);
+        syncBrowserUrl(nextPage, nextPage === 'qr' ? qrBatchCode : '', false);
 
         setAuthOpen(false);
         setLoginNotice(null);
@@ -649,6 +755,7 @@ export default function App() {
         localStorage.removeItem('organic_qr_batch_code');
 
         setActivePage('home');
+        syncBrowserUrl('home', '', false);
 
         window.scrollTo({
             top: 0,
@@ -666,8 +773,9 @@ export default function App() {
             return;
         }
 
-        setQrBatchCode(String(batchCode));
-        navigatePage('qr');
+        const code = String(batchCode);
+        setQrBatchCode(code);
+        navigatePage('qr', { batchCode: code });
     };
 
     // ==================================================

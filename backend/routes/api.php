@@ -152,6 +152,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('/accounts/{id}', [AuthController::class, 'destroyAccount']);
             Route::get('/dashboard-stats', [AlertsAndStatsController::class, 'dashboardStats']);
             Route::get('/inventory', [AlertsAndStatsController::class, 'productInventory']);
+            Route::delete('/products/{id}', [ProductController::class, 'destroy']);
         });
 
     });

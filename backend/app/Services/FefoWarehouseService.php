@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Batch;
+use App\Models\Product;
 use App\Models\WasteRecord;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -18,6 +19,15 @@ class FefoWarehouseService
         }
 
         return DB::transaction(function () use ($productId, $quantityNeeded) {
+            Batch::syncExpiryStatuses();
+
+            $product = Product::query()->findOrFail($productId);
+            $quantityNeeded = Product::validateQuantityForUnit(
+                $quantityNeeded,
+                $product->unit,
+                "Số lượng xuất kho sản phẩm \"{$product->name}\""
+            );
+
             $today = now()->toDateString();
 
             $batches = Batch::query()
@@ -88,7 +98,13 @@ class FefoWarehouseService
     {
         return DB::transaction(function () use ($batchId, $userId, $quantity, $reason, $evidenceFile) {
             /** @var Batch $batch */
-            $batch = Batch::query()->lockForUpdate()->findOrFail($batchId);
+            $batch = Batch::query()->with('product:id,name,unit')->lockForUpdate()->findOrFail($batchId);
+
+            $quantity = Product::validateQuantityForUnit(
+                $quantity,
+                $batch->product?->unit,
+                'Số lượng xuất hủy'
+            );
 
             if ($quantity > (float) $batch->current_quantity) {
                 throw new RuntimeException(
